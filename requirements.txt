@@ -1,0 +1,8 @@
+streamlit>=1.50
+mediapipe==1.2.3
+numpy
+pandas
+matplotlib>=3.10,<3.11
+scikit-learn
+requests
+plotly>=6

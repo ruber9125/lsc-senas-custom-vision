@@ -1,0 +1,24 @@
+# Tema institucional · Universidad de La Salle
+# Azul #003151 (principal) · Dorado #F7AB00 (acento, se aplica desde interfaz/estilos.py)
+
+[theme]
+base = "light"
+primaryColor = "#003151"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F6F9"
+textColor = "#1B2B3A"
+linkColor = "#003151"
+borderColor = "#DCE3EA"
+showWidgetBorder = true
+font = "sans-serif"
+baseRadius = "0.6rem"
+buttonRadius = "0.6rem"
+# Colores de las señas en gráficos: HOLA, BIEN, MAL
+chartCategoricalColors = ["#2C6FA6", "#E39B00", "#8E3B46"]
+
+[theme.sidebar]
+backgroundColor = "#F3F6F9"
+borderColor = "#DCE3EA"
+
+[client]
+toolbarMode = "minimal"
