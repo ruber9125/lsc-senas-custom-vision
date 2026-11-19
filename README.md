@@ -55,8 +55,12 @@ el recall, el F1, la matriz de confusión y las curvas ROC/AUC.
    APP_PASSWORD = "..."        # opcional
    ```
 
-5. **Librerías del sistema.** `packages.txt` instala `libgl1` y `libglib2.0-0`, que OpenCV (dependencia de
-   MediaPipe) necesita en Linux. Sin ellas la app falla con `libGL.so.1: cannot open shared object file`.
+5. **Librerías del sistema.** `packages.txt` instala las librerías gráficas que faltan en un servidor Linux sin
+   escritorio:
+   - `libgl1` y `libglib2.0-0`: las necesita OpenCV (dependencia de MediaPipe).
+   - `libegl1` y `libgles2`: las necesita MediaPipe (`libEGL.so.1` y `libGLESv2.so.2`).
+
+   Sin ellas la app falla con `libGL.so.1` o `libEGL.so.1: cannot open shared object file`.
 
 ### Contraseña de acceso (opcional)
 
