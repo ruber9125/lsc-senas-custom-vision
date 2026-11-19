@@ -19,7 +19,8 @@ CSS = f"""
   --azul: {AZUL}; --dorado: {DORADO}; --texto: {TEXTO}; --suave: {TEXTO_SUAVE};
   --fondo-suave: {FONDO_SUAVE}; --borde: {BORDE}; --verde: {VERDE}; --rojo: {ROJO};
 }}
-.block-container {{ padding-top: 3.2rem; padding-bottom: 1rem; max-width: 1280px; }}
+/* La barra superior de Streamlit Cloud mide 3.75rem y queda encima del contenido: se deja ese espacio libre */
+.block-container {{ padding-top: 4.6rem; padding-bottom: 1rem; max-width: 1280px; }}
 
 /* ---------- Encabezado ---------- */
 .lsc-encabezado {{
@@ -243,7 +244,7 @@ div[class*="st-key-banner_flujo"] img {{ border-radius: 10px; }}
 }}
 /* ---------- Pantallas pequeñas ---------- */
 @media (max-width: 640px) {{
-  .block-container {{ padding-left: 1rem; padding-right: 1rem; padding-top: 1rem; }}
+  .block-container {{ padding-left: 1rem; padding-right: 1rem; padding-top: 4.4rem; }}
   .lsc-encabezado {{ flex-direction: column; text-align: center; gap: .7rem; padding: 1rem; }}
   .lsc-encabezado .lsc-sep {{ display: none; }}
   .lsc-encabezado img {{ height: 48px; }}

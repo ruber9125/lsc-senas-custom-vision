@@ -17,6 +17,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 from sklearn.metrics import classification_report, confusion_matrix
 
@@ -78,6 +79,19 @@ if "analizados" not in st.session_state:
     st.session_state["analizados"] = set()      # huellas ya procesadas en esta sesión (solo para la interfaz)
 
 
+# ---------- Consulta al modelo (los errores de red nunca muestran la URL del endpoint, que es privada) ----------
+def consultar_azure(png):
+    try:
+        return clasificar(png, URL, CLAVE)
+    except requests.exceptions.Timeout:
+        raise RuntimeError("Azure tardó demasiado en responder. Intenta de nuevo.") from None
+    except requests.exceptions.HTTPError as e:
+        codigo = e.response.status_code if e.response is not None else "desconocido"
+        raise RuntimeError(f"Azure respondió con un error ({codigo}). Intenta de nuevo en unos minutos.") from None
+    except requests.exceptions.RequestException:
+        raise RuntimeError("No se pudo conectar con Azure. Intenta de nuevo en unos minutos.") from None
+
+
 # ---------- Procesamiento (con caché: el mismo video nunca se consulta dos veces en Azure) ----------
 @st.cache_data(show_spinner=False, max_entries=200)
 def procesar(contenido: bytes, nombre: str):
@@ -96,7 +110,7 @@ def procesar(contenido: bytes, nombre: str):
         finally:
             os.remove(ruta)
     png = dibujar_trayectoria(datos["pose"], datos["mano_izq"], datos["mano_der"], datos["ancho"], datos["alto"])
-    probs = clasificar(png, URL, CLAVE)
+    probs = consultar_azure(png)
     return png, probs, datos["frames"]
 
 
