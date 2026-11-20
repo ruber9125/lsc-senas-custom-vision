@@ -52,15 +52,20 @@ def _fps_estimado(ruta_video, duracion_s):
 def extraer_de_video(ruta_video, duracion_s=None):
     """Devuelve pose, mano_izq, mano_der (NaN donde no se detectó), ancho, alto y frames procesados.
 
-    duracion_s (opcional): duración real de la grabación en segundos. Solo se usa cuando el video
-    no informa bien sus fps (<= 0 o > 120), para estimarlos como fotogramas / duración.
+    duracion_s (opcional): duración real de la grabación en segundos, medida por el grabador de la
+    cámara. Si se indica, los fps se calculan como fotogramas / duración (no se confía en el contenedor).
+    Sin ella (videos cargados) se usan los fps del video, y solo se estiman si son inválidos (<= 0 o > 120).
     """
     cap = cv2.VideoCapture(str(ruta_video))
     if not cap.isOpened():
         raise ValueError("No se pudo abrir el video.")
     fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-    if not 0 < fps <= 120:                             # también descarta NaN
-        fps = _fps_estimado(ruta_video, duracion_s) or 30.0
+    fps_valido = 0 < fps <= 120                        # también descarta NaN
+    # Los .webm del navegador no guardan sus fps y OpenCV los adivina: a veces da 1000 y a veces un valor
+    # creíble pero falso (60 con 15 reales), que haría descartar 2 de cada 3 fotogramas. Por eso, si el
+    # grabador midió la duración, los fps se calculan siempre como fotogramas / duración.
+    if duracion_s or not fps_valido:
+        fps = _fps_estimado(ruta_video, duracion_s) or (fps if fps_valido else 30.0)
     # Si el video tiene más fps que las grabaciones de entrenamiento (p. ej. 30 o 60),
     # se toma 1 de cada `paso` fotogramas para que la densidad de puntos sea parecida.
     paso = max(1, round(fps / FPS_OBJETIVO))
