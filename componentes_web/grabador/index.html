@@ -73,8 +73,8 @@
     <button class="secundario" id="btnApagar" type="button" hidden>Apagar cámara</button>
   </div>
   <div class="estado" id="estado" role="status" aria-live="polite"></div>
-  <p class="ayuda"><b>Aléjese de la cámara</b> hasta que sus hombros queden sobre la línea amarilla: se le debe ver de la
-    cintura hacia arriba. De frente y con buena luz. Empiece y termine con las manos abajo.</p>
+  <p class="ayuda"><b>Aléjese de la cámara</b> (cerca de 1,5 m) hasta que su cabeza quede en el óvalo y sus hombros sobre la línea
+    amarilla: se le debe ver de la cintura hacia arriba. De frente y con buena luz. Empiece y termine con las manos abajo.</p>
 </div>
 
 <script>
@@ -95,7 +95,7 @@
   }
 
   var SEGUNDOS = 4;           // duración de la grabación (Python puede cambiarla con el argumento "segundos")
-  var CUENTA = 3;              // cuenta regresiva
+  var CUENTA = 5;              // cuenta regresiva (Python puede cambiarla con el argumento "cuenta")
   window.addEventListener("message", function (ev) {
     var d = ev.data || {};
     if (d.type !== "streamlit:render") return;
@@ -203,7 +203,7 @@
     decir(grabaciones ? "Cámara apagada. La última grabación ya fue enviada." : "");
   }
 
-  // ---------- Grabación: cuenta regresiva 3-2-1 y luego SEGUNDOS segundos ----------
+  // ---------- Grabación: cuenta regresiva y luego SEGUNDOS segundos ----------
   function iniciar() {
     if (ocupado || !stream) return;
     ocupado = true;

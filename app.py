@@ -24,7 +24,7 @@ import streamlit as st
 from sklearn.metrics import classification_report, confusion_matrix
 
 from lsc.azure_cv import clasificar
-from lsc.recorte import encuadre_inadecuado, recortar_sena
+from lsc.recorte import ajustar_fps, comprobar_captura, encuadre_inadecuado, recortar_sena
 from lsc.trayectoria import desde_npz, dibujar_trayectoria
 from interfaz import componentes as ui
 from interfaz.grabador import grabar_con_camara
@@ -128,9 +128,13 @@ def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None, rec
         finally:
             os.remove(ruta)
     info = {"frames_video": datos["frames"], "encuadre_inadecuado": encuadre_inadecuado(datos)}
+    fps = datos.get("fps_puntos")
     if recortar and ext != ".npz":
-        # Los clips de entrenamiento contienen solo la seña: se quita la quietud para que la imagen se parezca.
-        datos = recortar_sena(datos, datos.get("fps_puntos"))
+        # Se lleva la grabación a los parámetros de las muestras de entrenamiento: solo la seña (sin la
+        # quietud del inicio y del final) y al mismo ritmo de fotogramas.
+        datos = recortar_sena(datos, fps)
+        datos, fps = ajustar_fps(datos, fps)
+    info["comprobacion"] = comprobar_captura(datos, fps)
     png = dibujar_trayectoria(datos["pose"], datos["mano_izq"], datos["mano_der"], datos["ancho"], datos["alto"])
     probs = consultar_azure(png)
     return png, probs, datos["frames"], info
@@ -205,7 +209,7 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None, recort
                 st.stop()
             duracion = time.perf_counter() - inicio
             detalle = (f"**{frames} fotogramas**" if info["frames_video"] == frames else
-                       f"**{info['frames_video']} fotogramas** grabados, **{frames}** de la seña (sin la quietud)")
+                       f"**{info['frames_video']} fotogramas** grabados, **{frames}** de la seña (sin la quietud, al ritmo de las muestras)")
             etapas.markdown(
                 f":material/check_circle: Puntos clave detectados · {detalle}  \n"
                 ":material/check_circle: Imagen de trayectoria generada  \n"
@@ -243,6 +247,16 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None, recort
         aviso = AVISO_BAJA_CONFIANZA if probs.get(ganadora, 0.0) < CONFIANZA_MINIMA else ""
         ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""), MENSAJE.get(ganadora, ""),
                              aviso)
+
+    # ----- Comprobación: la captura frente a los parámetros de las muestras de entrenamiento -----
+    filas = info["comprobacion"]
+    fuera = sum(f["Cumple"] == "No" for f in filas)
+    titulo = ("Comprobación de la captura: todo dentro de los parámetros de las muestras" if not fuera else
+              f"Comprobación de la captura: {fuera} parámetro(s) fuera de los de las muestras")
+    with st.expander(titulo, expanded=bool(fuera), icon=":material/fact_check:"):
+        st.caption("El modelo se entrenó con videos grabados de una sola forma. Mientras más se parezca la captura "
+                   "a esos videos, más confiable es el resultado.")
+        st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch", key=f"comprobacion_{huella}")
 
     # ----- Confirmación: la persona indica DESPUÉS cuál seña era realmente -----
     # El modelo decide primero, sin pistas; la respuesta real se pide después para no influir en nada.
@@ -365,7 +379,7 @@ with tab2:
 <div class="lsc-tarjeta suave">
   <ol class="lsc-lista">
     <li>En la pestaña <b>Atención en ventanilla</b>, elija <b>Grabar con la cámara</b> o <b>Cargar un video</b>.</li>
-    <li>Con la cámara: pulse <b>Activar cámara</b> y luego <b>Grabar seña</b>. Hay una cuenta regresiva 3-2-1 y se
+    <li>Con la cámara: pulse <b>Activar cámara</b> y luego <b>Grabar seña</b>. Hay una cuenta regresiva de 5 segundos y se
         graban <b>4 segundos</b>.</li>
     <li>La persona hace <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.
         <b>Empieza y termina con las manos abajo.</b></li>

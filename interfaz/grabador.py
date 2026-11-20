@@ -14,12 +14,13 @@ _RUTA = Path(__file__).resolve().parent.parent / "componentes_web" / "grabador"
 _componente = components.declare_component("grabador", path=str(_RUTA))
 
 SEGUNDOS = 4                      # duración de cada grabación (la app recorta después la quietud)
+CUENTA = 5                        # cuenta regresiva: da tiempo de alejarse hasta la guía de encuadre
 MAX_BYTES = 40 * 1024 * 1024      # límite de seguridad: 4 s de video pesan 1-2 MB
 
 
 def grabar_con_camara():
     """Muestra el grabador. Devuelve None o {"id", "contenido" (bytes), "nombre", "duracion_s"}."""
-    valor = _componente(segundos=SEGUNDOS, cuenta=3, key="grabador_camara", default=None)
+    valor = _componente(segundos=SEGUNDOS, cuenta=CUENTA, key="grabador_camara", default=None)
     if not isinstance(valor, dict) or not valor.get("id") or not valor.get("video_b64"):
         return None
 

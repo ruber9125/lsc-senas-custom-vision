@@ -24,6 +24,7 @@ DURACION_MINIMA_S = 0.6     # un recorte más corto que esto se descarta (sería
 
 HOMBROS_MAX = 0.28          # hombros / lado mayor del video; en los clips de entrenamiento va de 0.18 a 0.25
 ESPACIO_MIN = 0.55          # imagen visible bajo los hombros, en anchos de hombro; en los clips va de 0.6 a 1.4
+FPS_MUESTRAS = 20.5         # fotogramas por segundo (mediana) de las muestras de entrenamiento: 16.7 a 25.6
 
 
 def _centro_y_ancho(pose_px):
@@ -131,3 +132,68 @@ def encuadre_inadecuado(datos):
     los que se entrenó el modelo, o sus hombros quedan muy abajo en la imagen."""
     f, e = fraccion_hombros(datos), espacio_bajo_hombros(datos)
     return f is not None and (f > HOMBROS_MAX or e < ESPACIO_MIN)
+
+
+def ajustar_fps(datos, fps, objetivo=FPS_MUESTRAS):
+    """Deja los puntos con el ritmo de las muestras de entrenamiento (unos 20 fotogramas por segundo).
+
+    Las muestras se grabaron a 17-26 fps; la cámara del navegador entrega 30. Con más fotogramas, la imagen
+    de trayectoria queda con más puntos que las del entrenamiento. Se conservan los fotogramas más cercanos
+    a cada instante (no se inventan puntos). Si el video ya es igual o más lento, no se toca.
+    Devuelve (datos, fps resultante).
+    """
+    T = len(datos["pose"])
+    if not fps or fps <= objetivo * 1.15 or T < 3:
+        return dict(datos, frames=T), fps
+    n = max(2, round(T / fps * objetivo))
+    idx = np.unique(np.round(np.linspace(0, T - 1, n)).astype(int))
+    return dict(datos, pose=np.asarray(datos["pose"])[idx], mano_izq=np.asarray(datos["mano_izq"])[idx],
+                mano_der=np.asarray(datos["mano_der"])[idx], frames=len(idx)), fps * len(idx) / T
+
+
+def _numero(x, decimales=0):
+    return f"{x:.{decimales}f}".replace(".", ",")
+
+
+def comprobar_captura(datos, fps=None):
+    """Compara la captura con los parámetros de las 60 muestras de entrenamiento (S00 y S01).
+
+    Devuelve una lista de filas {"Parámetro", "Esta captura", "Muestras de entrenamiento", "Cumple"}.
+    "Muestras" es el rango medido en las muestras; "Cumple" usa una tolerancia que también cubre los 30
+    videos de prueba (no usados en el entrenamiento), grabados en otras sesiones.
+    """
+    pose = np.asarray(datos["pose"])
+    T = len(pose)
+    W, H = float(datos["ancho"]), float(datos["alto"])
+    filas = []
+
+    def fila(parametro, valor, muestras, cumple):
+        filas.append({"Parámetro": parametro, "Esta captura": valor, "Muestras de entrenamiento": muestras,
+                      "Cumple": "Sí" if cumple else "No"})
+
+    fila("Resolución del video", f"{int(W)} × {int(H)}", "1280 × 720 (horizontal)", W > H and 1.6 <= W / H <= 1.9)
+    if fps:
+        fila("Fotogramas por segundo", _numero(fps, 1), "16,7 a 25,6", 13 <= fps <= 27)
+        fila("Duración de la seña", f"{_numero(T / fps, 1)} s", "1,5 a 2,9 s", 1.2 <= T / fps <= 3.2)
+    fila("Fotogramas de la seña", str(T), "32 a 67", 28 <= T <= 70)
+
+    centro, ancho = _centro_y_ancho(pose[..., :2] * np.array([W, H]))
+    if centro is None:
+        fila("Persona detectada", "No", "Sí", False)
+        return filas
+    f, e = ancho / max(W, H), (H - centro[1]) / ancho
+    fila("Ancho de hombros (tamaño de la persona)", f"{_numero(100 * f)} % del ancho", "18 a 21 % del ancho",
+         0.15 <= f <= 0.26)
+    fila("Altura de los hombros en la imagen", f"{_numero(100 * centro[1] / H)} % desde arriba", "56 a 63 % desde arriba",
+         0.48 <= centro[1] / H <= 0.76)
+    fila("Persona centrada", f"{_numero(100 * centro[0] / W)} % desde la izquierda", "50 a 52 % desde la izquierda",
+         0.40 <= centro[0] / W <= 0.60)
+    fila("Espacio visible bajo los hombros", f"{_numero(e, 1)} anchos de hombro", "1,0 a 1,4 anchos de hombro", e >= 0.65)
+
+    con_izq = ~np.isnan(np.asarray(datos["mano_izq"])[:, 0, 0])
+    con_der = ~np.isnan(np.asarray(datos["mano_der"])[:, 0, 0])
+    fila("Fotogramas con la mano detectada", f"{_numero(100 * (con_izq | con_der).mean())} %", "76 a 94 %",
+         (con_izq | con_der).mean() >= 0.55)
+    derecha = con_der.sum() >= con_izq.sum()
+    fila("Mano que hace la seña", "Derecha" if derecha else "Izquierda", "Derecha", bool(derecha))
+    return filas
