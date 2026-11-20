@@ -79,7 +79,7 @@ def bienvenida():
     st.html(f"""
 <div class="lsc-bienvenida">
   <p><b>Bienvenido al punto de atención accesible.</b> Haga su seña frente a la cámara (se graban
-  <b>3 segundos</b>) o cargue un video. El sistema la reconoce y muestra el mensaje para el funcionario.</p>
+  <b>4 segundos</b>) o cargue un video. El sistema la reconoce y muestra el mensaje para el funcionario.</p>
   <div class="lsc-significados">{senas}</div>
 </div>""")
 
@@ -91,7 +91,7 @@ def tarjeta_instrucciones(camara: bool = False):
   <h4>Cómo grabar la seña con la cámara</h4>
   <ul>
     <li>Pulse <b>Activar cámara</b> y permita el acceso en el navegador.</li>
-    <li>Pulse <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>3 segundos</b>.</li>
+    <li>Pulse <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>4 segundos</b>.</li>
     <li>Haga <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.</li>
     <li>Empiece y termine con las manos abajo. Puede repetir la grabación.</li>
   </ul>
@@ -107,6 +107,13 @@ def tarjeta_instrucciones(camara: bool = False):
     <li>Formatos: <b>.mp4</b>, <b>.mov</b>, <b>.avi</b> o puntos clave <b>.npz</b>.</li>
   </ul>
 </div>""")
+
+
+def aviso_encuadre():
+    """Aviso (no bloquea): la persona está más cerca de la cámara que en los videos de entrenamiento."""
+    st.html('<div class="lsc-aviso-confianza"><b>Está muy cerca de la cámara.</b> Aléjese hasta que se vea de la '
+            'cintura hacia arriba, con espacio libre a los lados, y repita la seña: así el reconocimiento es más '
+            'confiable.</div>')
 
 
 def _nivel_confianza(p: float):

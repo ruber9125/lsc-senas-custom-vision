@@ -24,6 +24,7 @@ import streamlit as st
 from sklearn.metrics import classification_report, confusion_matrix
 
 from lsc.azure_cv import clasificar
+from lsc.recorte import muy_cerca, recortar_sena
 from lsc.trayectoria import desde_npz, dibujar_trayectoria
 from interfaz import componentes as ui
 from interfaz.grabador import grabar_con_camara
@@ -106,10 +107,12 @@ def consultar_azure(png):
 
 # ---------- Procesamiento (con caché: el mismo video nunca se consulta dos veces en Azure) ----------
 @st.cache_data(show_spinner=False, max_entries=200)
-def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None):
+def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None, recortar: bool = False):
     """Archivo -> puntos -> imagen de trayectoria -> predicción de Azure.
 
     duracion_s: duración real medida por el grabador de cámara (None para los videos cargados).
+    recortar: quita la quietud del inicio y del final (grabaciones con la cámara, de duración fija).
+    Devuelve la imagen, las probabilidades, los fotogramas de la seña y detalles del video.
     """
     ext = os.path.splitext(nombre)[1].lower()
     if ext == ".npz":
@@ -124,9 +127,13 @@ def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None):
             datos = extraer_de_video(ruta, duracion_s=duracion_s)
         finally:
             os.remove(ruta)
+    info = {"frames_video": datos["frames"], "muy_cerca": muy_cerca(datos)}
+    if recortar and ext != ".npz":
+        # Los clips de entrenamiento contienen solo la seña: se quita la quietud para que la imagen se parezca.
+        datos = recortar_sena(datos, datos.get("fps_puntos"))
     png = dibujar_trayectoria(datos["pose"], datos["mano_izq"], datos["mano_der"], datos["ancho"], datos["alto"])
     probs = consultar_azure(png)
-    return png, probs, datos["frames"]
+    return png, probs, datos["frames"], info
 
 
 # ---------- Tablero de métricas ----------
@@ -173,7 +180,7 @@ def bloque_metricas(reales, predichas, probs, titulo_cm, prefijo):
 
 
 # ---------- Análisis de UN video: el mismo flujo para la cámara y para el archivo cargado ----------
-def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
+def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None, recortar=False):
     """MediaPipe -> trayectoria -> Azure (con caché) -> tarjeta de resultado -> confirmación a ciegas."""
     if not (URL and CLAVE):
         st.error("El servicio no está conectado a Azure. Revise la configuración de los *secrets*.")
@@ -191,21 +198,23 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
                 ":material/progress_activity: Consultando el **modelo en Azure Custom Vision**")
             inicio = time.perf_counter()
             try:
-                png, probs, frames = procesar(contenido, nombre, duracion_s)
+                png, probs, frames, info = procesar(contenido, nombre, duracion_s, recortar)
             except Exception as e:
                 estado.update(label="No se pudo procesar el video", state="error", expanded=True)
                 st.error(f"No se pudo procesar el video: {e}")
                 st.stop()
             duracion = time.perf_counter() - inicio
+            detalle = (f"**{frames} fotogramas**" if info["frames_video"] == frames else
+                       f"**{info['frames_video']} fotogramas** grabados, **{frames}** de la seña (sin la quietud)")
             etapas.markdown(
-                f":material/check_circle: Puntos clave detectados · **{frames} fotogramas**  \n"
+                f":material/check_circle: Puntos clave detectados · {detalle}  \n"
                 ":material/check_circle: Imagen de trayectoria generada  \n"
                 ":material/check_circle: Predicción recibida del modelo en la nube")
             estado.update(label=f"Seña analizada en {duracion:.1f} s", state="complete", expanded=False)
         st.session_state["analizados"].add(huella)
     else:
         try:
-            png, probs, frames = procesar(contenido, nombre, duracion_s)
+            png, probs, frames, info = procesar(contenido, nombre, duracion_s, recortar)
         except Exception as e:
             st.error(f"No se pudo procesar el video: {e}")
             st.stop()
@@ -232,6 +241,8 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
         aviso = AVISO_BAJA_CONFIANZA if probs.get(ganadora, 0.0) < CONFIANZA_MINIMA else ""
         ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""), MENSAJE.get(ganadora, ""),
                              aviso)
+    if info["muy_cerca"]:
+        ui.aviso_encuadre()
 
     # ----- Confirmación: la persona indica DESPUÉS cuál seña era realmente -----
     # El modelo decide primero, sin pistas; la respuesta real se pide después para no influir en nada.
@@ -285,7 +296,7 @@ with tab1:
     modo = st.segmented_control("Forma de entregar el video", [ENTRADA_CAMARA, ENTRADA_ARCHIVO],
                                 default=ENTRADA_CAMARA, required=True, key="modo_entrada",
                                 label_visibility="collapsed")
-    entrada = None                      # (contenido, nombre, duración real en segundos o None)
+    entrada = None                      # (contenido, nombre, duración real en segundos o None, recortar)
     c_info, c_entrada = st.columns([1, 1.15], gap="large")
     if modo == ENTRADA_ARCHIVO:
         with c_info:
@@ -294,14 +305,15 @@ with tab1:
             archivo = st.file_uploader("Cargue el video de la seña", type=["mp4", "mov", "avi", "npz"],
                                        help="El sistema reconoce la seña sin saber cuál es; después se confirma.")
         if archivo is not None:
-            entrada = (archivo.getvalue(), archivo.name, None)
+            entrada = (archivo.getvalue(), archivo.name, None, False)
     else:
         with c_info:
             ui.tarjeta_instrucciones(camara=True)
         with c_entrada:
             grabacion = grabar_con_camara()
         if grabacion is not None:
-            entrada = (grabacion["contenido"], grabacion["nombre"], grabacion["duracion_s"])
+            # La cámara graba un tiempo fijo: se recorta la quietud del inicio y del final.
+            entrada = (grabacion["contenido"], grabacion["nombre"], grabacion["duracion_s"], True)
 
     if entrada is not None:
         analizar_video(pasos, *entrada)
@@ -354,7 +366,7 @@ with tab2:
   <ol class="lsc-lista">
     <li>En la pestaña <b>Atención en ventanilla</b>, elija <b>Grabar con la cámara</b> o <b>Cargar un video</b>.</li>
     <li>Con la cámara: pulse <b>Activar cámara</b> y luego <b>Grabar seña</b>. Hay una cuenta regresiva 3-2-1 y se
-        graban <b>3 segundos</b>.</li>
+        graban <b>4 segundos</b>.</li>
     <li>La persona hace <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.
         <b>Empieza y termina con las manos abajo.</b></li>
     <li>En pocos segundos aparece la seña reconocida y el mensaje para el funcionario.</li>
@@ -368,7 +380,7 @@ with tab2:
 <div class="lsc-flujo">
   <div class="lsc-etapa"><div class="lsc-num">1</div><h5>Video</h5>
     <p>La persona hace <b>una</b> seña frente a la cámara. El video se graba con la cámara del dispositivo
-       (3 segundos) o se carga desde él.</p></div>
+       (4 segundos; la app quita sola la quietud del inicio y del final) o se carga desde él.</p></div>
   <div class="lsc-etapa"><div class="lsc-num">2</div><h5>Puntos clave</h5>
     <p><i>MediaPipe Holistic</i> ubica en cada instante del video los puntos del cuerpo y de las manos.</p></div>
   <div class="lsc-etapa"><div class="lsc-num">3</div><h5>Imagen de trayectoria</h5>

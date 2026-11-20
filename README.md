@@ -24,7 +24,7 @@ interpretación en línea.
 ## Cómo se usa
 
 1. En la pestaña **Atención en ventanilla**, elegir **Grabar con la cámara** o **Cargar un video**.
-2. Con la cámara: pulsar **Activar cámara** y luego **Grabar seña** (cuenta regresiva 3-2-1 y 3 segundos de grabación).
+2. Con la cámara: pulsar **Activar cámara** y luego **Grabar seña** (cuenta regresiva 3-2-1 y 4 segundos de grabación).
 3. La persona hace **una sola seña**, de frente, de la cintura hacia arriba y con buena luz, empezando y terminando
    con las manos abajo.
 4. La app muestra la seña reconocida, la confianza y el mensaje para el funcionario.
@@ -53,8 +53,9 @@ certificado, traslado, cita, sí, no, gracias, ayuda…) y frases cortas.
 | `app.py` | Interfaz Streamlit: atención en ventanilla, evaluación del modelo en la sesión y explicación |
 | `interfaz/` | Presentación: estilos (`estilos.py`), componentes visuales (`componentes.py`) y gráficos Plotly (`graficos.py`) |
 | `interfaz/grabador.py` | Lado de Python del grabador: recibe el video de la cámara y lo entrega al mismo flujo que los videos cargados |
-| `componentes_web/grabador/index.html` | Grabador con la cámara (componente web propio, sin paquetes nuevos): cuenta regresiva 3-2-1 y 3 segundos de grabación |
+| `componentes_web/grabador/index.html` | Grabador con la cámara (componente web propio, sin paquetes nuevos): cuenta regresiva 3-2-1 y 4 segundos de grabación |
 | `lsc/extraccion.py` | Video → puntos clave con MediaPipe Holistic (mismo modelo y umbrales que la captura de los datos) |
+| `lsc/recorte.py` | Quita la quietud del inicio y del final de las grabaciones con la cámara, para que se parezcan a los clips de entrenamiento, y avisa si la persona está muy cerca de la cámara |
 | `lsc/trayectoria.py` | Puntos clave → imagen de trayectoria. **Idéntica** píxel a píxel a la usada en el entrenamiento |
 | `lsc/azure_cv.py` | Envía la imagen al endpoint de Azure (variante `nostore`: Azure no guarda las imágenes) |
 | `models/holistic_landmarker.task` | Modelo de MediaPipe Holistic (Google) |

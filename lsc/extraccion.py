@@ -104,4 +104,4 @@ def extraer_de_video(ruta_video, duracion_s=None):
     if np.isnan(izq[:, 0, 0]).all() and np.isnan(der[:, 0, 0]).all():
         raise ValueError("No se detectaron manos en el video.")
     return {"pose": pose, "mano_izq": izq, "mano_der": der, "ancho": ancho, "alto": alto,
-            "frames": len(pose), "fps_video": fps}
+            "frames": len(pose), "fps_video": fps, "fps_puntos": fps / paso}
