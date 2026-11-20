@@ -43,6 +43,29 @@ CSS = f"""
 .stTabs [data-baseweb="tab"] {{ padding: .55rem .9rem; font-weight: 600; }}
 .stTabs [data-baseweb="tab-highlight"] {{ background-color: var(--dorado); height: 3px; }}
 
+/* ---------- Bienvenida y significado de cada seña ---------- */
+.lsc-bienvenida {{ margin: .6rem 0 .2rem; }}
+.lsc-bienvenida p {{ margin: 0 0 .7rem; font-size: 1rem; color: var(--texto); }}
+.lsc-significados {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }}
+.lsc-significado {{
+  background: #fff; border: 1px solid var(--borde); border-top: 4px solid var(--azul); border-radius: 12px;
+  padding: .6rem .9rem; display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+}}
+.lsc-significado b {{ font-size: 1.05rem; letter-spacing: .04em; }}
+.lsc-significado span {{ font-size: .92rem; color: var(--texto); }}
+.lsc-aviso-confianza {{
+  margin: .5rem 0 .2rem; padding: .55rem .75rem; border-left: 4px solid var(--dorado); background: #FFFBF0;
+  border-radius: 8px; font-size: .9rem; color: var(--texto);
+}}
+.lsc-parrafo {{ margin: 0 0 .5rem; font-size: .96rem; }}
+.lsc-lista {{ margin: .2rem 0 .5rem; padding-left: 1.2rem; }}
+.lsc-lista li {{ margin: .3rem 0; font-size: .95rem; }}
+.lsc-relevo {{
+  background: #FFFBF0; border: 1px solid #F1DFAE; border-left: 4px solid var(--dorado); border-radius: 10px;
+  padding: .7rem .85rem; font-size: .85rem; line-height: 1.45; color: var(--texto);
+}}
+.lsc-relevo b {{ color: var(--azul); }}
+
 /* ---------- Selector de entrada (cámara / archivo) ---------- */
 div[class*="st-key-modo_entrada"] {{ margin: .2rem 0 .6rem; }}
 div[class*="st-key-modo_entrada"] button {{ min-height: 2.7rem; padding: .35rem 1.1rem; font-weight: 600; }}
@@ -270,6 +293,7 @@ div[class*="st-key-banner_flujo"] img {{ border-radius: 10px; }}
   .lsc-kpis {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
   .lsc-kpi .lsc-kpi-valor {{ font-size: 1.5rem; }}
   .lsc-flujo, .lsc-cifras {{ grid-template-columns: 1fr 1fr; }}
+  .lsc-significados {{ grid-template-columns: 1fr; }}
   .lsc-veredicto {{ flex-direction: column; text-align: center; }}
 }}
 </style>

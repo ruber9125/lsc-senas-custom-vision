@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title App LSC - Reconocimiento de senas
+title LSC Atiende
 cd /d "%~dp0"
 
 if not exist ".streamlit\secrets.toml" (

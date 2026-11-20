@@ -1,28 +1,56 @@
-# Reconocimiento de señas LSC (HOLA · BIEN · MAL) con Azure Custom Vision
+# LSC Atiende
 
-Aplicación web del **Proyecto Final (Actividad 6) de Visión por Computador** — Maestría en Inteligencia Artificial, Universidad de La Salle.
+**Reconocimiento de señas para la atención accesible al ciudadano sordo.**
 
-Autor: **Ing. Rubert Eduardo Quintero Orozco**
+Prototipo de un punto de atención accesible para personas sordas en entidades públicas. Piloto propuesto en la
+Secretaría de Educación de Valledupar, con réplica en las Secretarías de Educación del país.
 
-El usuario **graba con la cámara** del dispositivo (computador, celular o tableta) o **carga** un video corto con
-**una seña** de la Lengua de Señas Colombiana, y la app la reconoce automáticamente.
+Autor: **Ing. Rubert Eduardo Quintero Orozco** — Maestría en Inteligencia Artificial, Universidad de La Salle.
 
-## Flujo
+## Propósito
+
+La persona sorda se comunica con la ventanilla en **Lengua de Señas Colombiana (LSC)** en dos momentos de la atención:
+
+| Seña | Uso en la atención | Mensaje en pantalla |
+|---|---|---|
+| **HOLA** | Iniciar la atención | "Una persona sorda solicita atención" |
+| **BIEN** | Calificar el servicio: bien | "Calificación del servicio: BIEN" |
+| **MAL** | Calificar el servicio: mal | "Calificación del servicio: MAL" |
+
+El sistema **no reemplaza al intérprete**: complementa al Centro de Relevo (MinTIC–Fenascol), al que se remite lo que
+el sistema no reconoce. Si la confianza de una predicción es menor al 60 %, la app sugiere repetir la seña o solicitar
+interpretación en línea.
+
+## Cómo se usa
+
+1. En la pestaña **Atención en ventanilla**, elegir **Grabar con la cámara** o **Cargar un video**.
+2. Con la cámara: pulsar **Activar cámara** y luego **Grabar seña** (cuenta regresiva 3-2-1 y 3 segundos de grabación).
+3. La persona hace **una sola seña**, de frente, de la cintura hacia arriba y con buena luz, empezando y terminando
+   con las manos abajo.
+4. La app muestra la seña reconocida, la confianza y el mensaje para el funcionario.
+5. Para evaluar el modelo, se confirma cuál seña se hizo realmente ("Era HOLA / Era BIEN / Era MAL").
+
+La pestaña **Cómo funciona** explica el sistema en lenguaje claro para el funcionario.
+
+## Qué pasa por dentro
 
 ```
-Video (.mp4)  →  MediaPipe Holistic  →  Imagen de trayectoria 224×224  →  Azure Custom Vision (endpoint)  →  Seña
-               (cuerpo + manos)        (azul = inicio, rojo = final)      (modelo lsc-senas-v1)
+Video  →  MediaPipe Holistic  →  Imagen de trayectoria 224×224  →  Azure Custom Vision (endpoint)  →  Seña
+          (cuerpo + manos)        (azul = inicio, rojo = final)      (modelo lsc-senas-v1)
 ```
 
-La evaluación es **a ciegas**: el modelo predice primero y, después, la persona confirma cuál seña hizo
-("Era HOLA / Era BIEN / Era MAL"). Con esas confirmaciones la app calcula en la sesión la exactitud, la precisión,
-el recall, el F1, la matriz de confusión y las curvas ROC/AUC.
+La evaluación es **a ciegas**: el modelo predice primero y la confirmación se pide después. Con esas confirmaciones
+la app calcula en la sesión la exactitud, la precisión, el recall, el F1, la matriz de confusión y las curvas ROC/AUC,
+lo que permite medir el desempeño con personas que no participaron en el entrenamiento.
+
+**Alcance actual:** tres señas y una seña por video. **Próximas fases:** vocabulario de trámites (matrícula,
+certificado, traslado, cita, sí, no, gracias, ayuda…) y frases cortas.
 
 ## Estructura
 
 | Archivo | Función |
 |---|---|
-| `app.py` | Interfaz Streamlit: reconocer una seña, métricas de la sesión y explicación |
+| `app.py` | Interfaz Streamlit: atención en ventanilla, evaluación del modelo en la sesión y explicación |
 | `interfaz/` | Presentación: estilos (`estilos.py`), componentes visuales (`componentes.py`) y gráficos Plotly (`graficos.py`) |
 | `interfaz/grabador.py` | Lado de Python del grabador: recibe el video de la cámara y lo entrega al mismo flujo que los videos cargados |
 | `componentes_web/grabador/index.html` | Grabador con la cámara (componente web propio, sin paquetes nuevos): cuenta regresiva 3-2-1 y 3 segundos de grabación |
@@ -75,5 +103,6 @@ cada predicción consume el recurso de Azure, que es de pago.
 
 - La URL y la clave de Azure nunca están en el código ni en el repositorio: se leen de los *secrets* de Streamlit.
 - Las consultas usan `.../image/nostore`: Azure no almacena las imágenes enviadas.
-- A Azure solo se envía la imagen de trayectoria, nunca el video.
+- El video se usa solo para el análisis y no se guarda. A Azure solo se envía la imagen de trayectoria, que no
+  contiene rostros.
 - El repositorio no contiene videos, puntos clave ni fotos de los señantes.

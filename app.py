@@ -1,6 +1,7 @@
 """
-Reconocimiento de señas de la Lengua de Señas Colombiana (LSC) — HOLA, BIEN, MAL.
-Actividad 6 · Proyecto Final · Visión por Computador · Maestría en IA, Universidad de La Salle.
+LSC Atiende — Reconocimiento de señas para la atención accesible al ciudadano sordo.
+Prototipo de punto de atención para personas sordas en entidades públicas (HOLA, BIEN, MAL en LSC).
+Maestría en Inteligencia Artificial, Universidad de La Salle.
 
 Flujo:  video -> MediaPipe Holistic -> imagen de trayectoria (224x224)
         -> modelo publicado en Azure Custom Vision (endpoint REST) -> seña reconocida.
@@ -38,9 +39,12 @@ MENSAJE = {"HOLA": "👋 Una persona sorda solicita atención",
            "MAL": "Calificación del servicio: MAL 👎"}
 ENTRADA_CAMARA = "🎥 Grabar con la cámara"
 ENTRADA_ARCHIVO = "📁 Cargar un video"
+# Por debajo de esta confianza se sugiere repetir la seña o acudir al Centro de Relevo (solo es un aviso)
+CONFIANZA_MINIMA = 0.60
+AVISO_BAJA_CONFIANZA = ("No se reconoció con seguridad. Puede repetir la seña o solicitar interpretación "
+                        "en línea con el Centro de Relevo.")
 
-st.set_page_config(page_title="Reconocimiento LSC · Universidad de La Salle",
-                   page_icon=":material/sign_language:", layout="wide")
+st.set_page_config(page_title=ui.NOMBRE_APP, page_icon="🤟", layout="wide")
 ui.aplicar_estilos()
 
 
@@ -92,12 +96,12 @@ def consultar_azure(png):
     try:
         return clasificar(png, URL, CLAVE)
     except requests.exceptions.Timeout:
-        raise RuntimeError("Azure tardó demasiado en responder. Intenta de nuevo.") from None
+        raise RuntimeError("Azure tardó demasiado en responder. Intente de nuevo.") from None
     except requests.exceptions.HTTPError as e:
         codigo = e.response.status_code if e.response is not None else "desconocido"
-        raise RuntimeError(f"Azure respondió con un error ({codigo}). Intenta de nuevo en unos minutos.") from None
+        raise RuntimeError(f"Azure respondió con un error ({codigo}). Intente de nuevo en unos minutos.") from None
     except requests.exceptions.RequestException:
-        raise RuntimeError("No se pudo conectar con Azure. Intenta de nuevo en unos minutos.") from None
+        raise RuntimeError("No se pudo conectar con Azure. Intente de nuevo en unos minutos.") from None
 
 
 # ---------- Procesamiento (con caché: el mismo video nunca se consulta dos veces en Azure) ----------
@@ -172,7 +176,7 @@ def bloque_metricas(reales, predichas, probs, titulo_cm, prefijo):
 def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
     """MediaPipe -> trayectoria -> Azure (con caché) -> tarjeta de resultado -> confirmación a ciegas."""
     if not (URL and CLAVE):
-        st.error("La app no está conectada a Azure. Revisa la configuración de los *secrets*.")
+        st.error("El servicio no está conectado a Azure. Revise la configuración de los *secrets*.")
         st.stop()
     huella = hashlib.sha1(contenido).hexdigest()[:16]
     ui.indicador_pasos(pasos, 1)
@@ -225,12 +229,14 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
             st.image(png, width=224)
             ui.leyenda_trayectoria(frames)
     with col_res:
-        ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""), MENSAJE.get(ganadora, ""))
+        aviso = AVISO_BAJA_CONFIANZA if probs.get(ganadora, 0.0) < CONFIANZA_MINIMA else ""
+        ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""), MENSAJE.get(ganadora, ""),
+                             aviso)
 
     # ----- Confirmación: la persona indica DESPUÉS cuál seña era realmente -----
     # El modelo decide primero, sin pistas; la respuesta real se pide después para no influir en nada.
-    ui.seccion("¿Qué seña hiciste realmente?",
-               "El modelo ya decidió sin pistas. Tu respuesta solo se usa para medir su desempeño.")
+    ui.seccion("¿Qué seña hizo realmente la persona?",
+               "El sistema ya respondió sin pistas. Esta confirmación solo se usa para evaluar el modelo.")
     if registro is None:
         botones = st.columns(len(CLASES), gap="medium")
         for col, clase in zip(botones, CLASES):
@@ -247,28 +253,31 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
 hist_lateral = st.session_state["historial"]
 with st.sidebar:
     ui.tarjeta_proyecto()
-    ui.titulo_lateral("Servicio")
+    ui.titulo_lateral("Estado del servicio")
     ui.estado_conexion(bool(URL and CLAVE))
     if not (URL and CLAVE):
-        st.caption("Configura AZURE_PREDICTION_URL y AZURE_PREDICTION_KEY en los *secrets* de Streamlit.")
+        st.caption("Configure AZURE_PREDICTION_URL y AZURE_PREDICTION_KEY en los *secrets* de Streamlit.")
     st.html('<div class="lsc-ficha" style="margin-top:.6rem">Modelo: <b>lsc-senas-v1</b><br>'
             'Plataforma: <b>Azure Custom Vision</b></div>')
     ui.titulo_lateral("Esta sesión")
     ui.contadores(len(hist_lateral), sum(h["real"] == h["prediccion"] for h in hist_lateral))
     if st.button("Reiniciar sesión", icon=":material/restart_alt:", width="stretch",
-                 disabled=not hist_lateral, help="Borra los videos confirmados y las métricas de esta sesión."):
+                 disabled=not hist_lateral, help="Borra las señas confirmadas y la evaluación de esta sesión."):
         st.session_state["historial"] = []
         st.rerun()
+    ui.titulo_lateral("Intérprete")
+    ui.nota_relevo()
     ui.titulo_lateral("Privacidad")
     ui.tarjeta_privacidad()
 
 # ---------- Encabezado y pestañas ----------
 ui.encabezado()
-tab1, tab2 = st.tabs([":material/videocam: Reconocer una seña",
+tab1, tab2 = st.tabs([":material/support_agent: Atención en ventanilla",
                       ":material/info: Cómo funciona"])
 
-# ---------- Pestaña 1: reconocer + métricas de la sesión ----------
+# ---------- Pestaña 1: atención en ventanilla + evaluación del modelo en la sesión ----------
 with tab1:
+    ui.bienvenida()
     pasos = st.empty()
     ui.indicador_pasos(pasos, 0)
 
@@ -282,8 +291,8 @@ with tab1:
         with c_info:
             ui.tarjeta_instrucciones()
         with c_entrada:
-            archivo = st.file_uploader("Sube el video de la seña", type=["mp4", "mov", "avi", "npz"],
-                                       help="El modelo reconoce la seña sin saber cuál es; después tú confirmas.")
+            archivo = st.file_uploader("Cargue el video de la seña", type=["mp4", "mov", "avi", "npz"],
+                                       help="El sistema reconoce la seña sin saber cuál es; después se confirma.")
         if archivo is not None:
             entrada = (archivo.getvalue(), archivo.name, None)
     else:
@@ -300,68 +309,121 @@ with tab1:
     # ----- Métricas de la sesión: se actualizan con cada video -----
     hist = pd.DataFrame(st.session_state["historial"])
     if len(hist):
-        ui.seccion("Desempeño del modelo en esta sesión",
-                   f"Calculado con {len(hist)} video(s) confirmados. Se actualiza cada vez que confirmas "
-                   "la seña real de un video nuevo.")
+        ui.seccion("Evaluación del modelo en esta sesión",
+                   "Sirve para medir el desempeño del modelo con personas que no participaron en el "
+                   f"entrenamiento. Calculada con {len(hist)} seña(s) confirmada(s); se actualiza con cada "
+                   "confirmación.")
         bloque_metricas(hist["real"].tolist(), hist["prediccion"].tolist(),
                         hist[[f"p_{c}" for c in CLASES]].to_numpy(), "Matriz de confusión (sesión)", "sesion")
-        with st.expander("Historial de videos de la sesión", icon=":material/history:"):
+        with st.expander("Historial de señas de la sesión", icon=":material/history:"):
             vista = hist.drop(columns=["huella"])
             st.dataframe(vista, hide_index=True, width="stretch", key="sesion_historial",
-                         column_config={"video": "Video", "real": "Seña real", "prediccion": "Predicción",
+                         column_config={"video": "Video", "real": "Seña realizada", "prediccion": "Seña reconocida",
                                         "frames": st.column_config.NumberColumn("Fotogramas", format="%d"),
                                         **{f"p_{c}": st.column_config.NumberColumn(f"P({c})", format="%.3f")
                                            for c in CLASES}})
             st.download_button("Descargar historial (CSV)", vista.to_csv(index=False).encode("utf-8"),
                                "historial_sesion.csv", "text/csv", icon=":material/download:")
     elif entrada is None:
-        ui.estado_vacio("Aún no hay videos en esta sesión",
-                        "Graba o carga un video para ver la predicción y empezar a medir el desempeño del modelo.")
+        ui.estado_vacio("Aún no hay señas en esta sesión",
+                        "Grabe la seña con la cámara o cargue un video para iniciar la atención.")
 
-# ---------- Pestaña 2: explicación ----------
+# ---------- Pestaña 2: explicación para el funcionario ----------
 with tab2:
     ui.banner_flujo()
-    ui.seccion("¿Cómo funciona?", "Del video a la seña reconocida en cinco pasos.")
+
+    # a) Para qué sirve
+    ui.seccion("Para qué sirve")
+    st.html("""
+<div class="lsc-tarjeta">
+  <p class="lsc-parrafo"><b>LSC Atiende</b> es el prototipo de un <b>punto de atención accesible</b> para personas
+  sordas en entidades públicas. Permite que la persona se comunique con la ventanilla en <b>Lengua de Señas
+  Colombiana (LSC)</b> en dos momentos de la atención:</p>
+  <ul class="lsc-lista">
+    <li><b>Saludo de inicio.</b> Con la seña <b>HOLA</b>, la persona sorda avisa que necesita atención.</li>
+    <li><b>Encuesta de satisfacción.</b> Con las señas <b>BIEN</b> o <b>MAL</b>, califica el servicio recibido.</li>
+  </ul>
+  <p class="lsc-parrafo">Piloto propuesto: <b>Secretaría de Educación de Valledupar</b>, con réplica en las
+  Secretarías de Educación del país.</p>
+</div>""")
+
+    # b) Cómo se usa
+    ui.seccion("Cómo se usa")
+    st.html("""
+<div class="lsc-tarjeta suave">
+  <ol class="lsc-lista">
+    <li>En la pestaña <b>Atención en ventanilla</b>, elija <b>Grabar con la cámara</b> o <b>Cargar un video</b>.</li>
+    <li>Con la cámara: pulse <b>Activar cámara</b> y luego <b>Grabar seña</b>. Hay una cuenta regresiva 3-2-1 y se
+        graban <b>3 segundos</b>.</li>
+    <li>La persona hace <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.
+        <b>Empieza y termina con las manos abajo.</b></li>
+    <li>En pocos segundos aparece la seña reconocida y el mensaje para el funcionario.</li>
+    <li>Si el sistema no reconoce la seña con seguridad, se puede repetir o acudir al <b>Centro de Relevo</b>.</li>
+  </ol>
+</div>""")
+
+    # c) Qué pasa por dentro
+    ui.seccion("Qué pasa por dentro", "De la seña al resultado en cinco pasos.")
     st.html("""
 <div class="lsc-flujo">
   <div class="lsc-etapa"><div class="lsc-num">1</div><h5>Video</h5>
-    <p>Una persona hace <b>una</b> seña frente a la cámara durante 2 a 4 segundos. El video puede
-       <b>grabarse con la cámara</b> del dispositivo o <b>cargarse</b> desde él.</p></div>
+    <p>La persona hace <b>una</b> seña frente a la cámara. El video se graba con la cámara del dispositivo
+       (3 segundos) o se carga desde él.</p></div>
   <div class="lsc-etapa"><div class="lsc-num">2</div><h5>Puntos clave</h5>
-    <p><i>MediaPipe Holistic</i> detecta en cada fotograma 33 puntos del cuerpo y 21 de cada mano.</p></div>
+    <p><i>MediaPipe Holistic</i> ubica en cada instante del video los puntos del cuerpo y de las manos.</p></div>
   <div class="lsc-etapa"><div class="lsc-num">3</div><h5>Imagen de trayectoria</h5>
-    <p>Todos los fotogramas se dibujan en una imagen de 224×224, centrada en los hombros y coloreada
-       según el tiempo (azul = inicio, rojo = final).</p></div>
+    <p>El recorrido de las manos se dibuja en una sola imagen, coloreada según el tiempo
+       (azul = inicio, rojo = final).</p></div>
   <div class="lsc-etapa"><div class="lsc-num">4</div><h5>Modelo en la nube</h5>
     <p>La imagen se envía al modelo publicado en <b>Azure Custom Vision</b>, que responde con la
        probabilidad de cada seña.</p></div>
-  <div class="lsc-etapa"><div class="lsc-num">5</div><h5>Resultado y métricas</h5>
-    <p>La persona confirma cuál seña hizo; la app compara y acumula exactitud, precisión, recall, F1 y ROC.</p></div>
+  <div class="lsc-etapa"><div class="lsc-num">5</div><h5>Resultado</h5>
+    <p>La ventanilla muestra la seña reconocida y su mensaje: inicio de la atención o calificación
+       del servicio.</p></div>
 </div>""")
-    ui.seccion("Datos de entrenamiento")
     st.html("""
 <div class="lsc-cifras">
   <div class="lsc-cifra"><b>3</b><span>señas: HOLA, BIEN, MAL</span></div>
-  <div class="lsc-cifra"><b>2</b><span>señantes (S00 y S01)</span></div>
+  <div class="lsc-cifra"><b>2</b><span>señantes en el entrenamiento</span></div>
   <div class="lsc-cifra"><b>60</b><span>videos · 10 repeticiones por seña</span></div>
   <div class="lsc-cifra"><b>180</b><span>imágenes con aumento de datos</span></div>
 </div>
-<p class="lsc-nota">Cada video genera 3 imágenes (original + 2 variantes leves).</p>
-<p class="lsc-nota"><b>Evaluación:</b> la persona que usa la aplicación (P01) confirma cuál seña realizó en cada
-video; con esas confirmaciones se calculan las métricas del modelo.</p>""")
+<p class="lsc-nota">El modelo se entrenó con estos datos. En la pestaña <b>Atención en ventanilla</b> se evalúa su
+desempeño con personas que no participaron en el entrenamiento.</p>""")
+
     c_priv, c_lim = st.columns(2, gap="large")
     with c_priv:
+        # d) Privacidad
         ui.seccion("Privacidad")
-        st.html('<div class="lsc-tarjeta suave">Las imágenes de trayectoria se envían al modelo con la opción '
-                '<b>nostore</b>: Azure no guarda ninguna copia. A Azure solo llega la imagen de trayectoria, '
-                'nunca el video.</div>')
+        st.html("""
+<div class="lsc-tarjeta suave"><ul class="lsc-lista">
+  <li>El video se usa solo para el análisis y <b>no se guarda</b>.</li>
+  <li>A Azure solo se envía la imagen de trayectoria, con la opción <b>nostore</b>: Azure no almacena las imágenes.</li>
+  <li>La imagen de trayectoria está hecha de puntos y líneas: <b>no contiene rostros</b>.</li>
+</ul></div>""")
     with c_lim:
-        ui.seccion("Limitaciones")
+        # e) Alcance y límites
+        ui.seccion("Alcance y límites")
         st.html("""
 <div class="lsc-aviso"><ul>
-  <li>Reconoce <b>solo tres señas</b> y <b>una seña por video</b>.</li>
-  <li>Entrenado con dos señantes: el desempeño puede variar con otras personas, cámaras o encuadres.</li>
-  <li>Los videos de cámara frontal de celular suelen estar en <b>espejo</b>; las grabaciones de entrenamiento no lo están.</li>
+  <li>Hoy reconoce <b>tres señas</b> (HOLA, BIEN y MAL) y <b>una seña por video</b>.</li>
+  <li><b>No reemplaza al intérprete.</b> Complementa al <b>Centro de Relevo</b> (MinTIC–Fenascol), al que se remite
+      lo que el sistema no reconoce.</li>
+  <li>Se entrenó con dos señantes: el desempeño puede variar con otras personas, cámaras o encuadres.</li>
+  <li>Los videos cargados desde la cámara frontal de un celular suelen estar en <b>espejo</b>; los del
+      entrenamiento no lo están.</li>
 </ul></div>""")
+
+    # f) Próximas fases
+    ui.seccion("Próximas fases")
+    st.html("""
+<div class="lsc-tarjeta">
+  <p class="lsc-parrafo"><b>Vocabulario de trámites</b> para la atención en las Secretarías de Educación:</p>
+  <div class="lsc-chips">
+    <span>matrícula</span><span>certificado</span><span>traslado</span><span>cita</span>
+    <span>sí</span><span>no</span><span>gracias</span><span>ayuda</span><span>…</span>
+  </div>
+  <p class="lsc-parrafo" style="margin-top:.8rem">Después, el reconocimiento de <b>frases cortas</b>.</p>
+</div>""")
 
 ui.pie_pagina()

@@ -12,6 +12,13 @@ LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo_lasalle.png"
 FLUJO = Path(__file__).resolve().parent.parent / "assets" / "flujo_lsc.png"
 PASOS = ["Video", "Puntos clave", "Trayectoria", "Modelo en la nube", "Resultado"]
 
+NOMBRE_APP = "LSC Atiende"
+SUBTITULO_APP = "Reconocimiento de señas para la atención accesible al ciudadano sordo"
+# Uso de cada seña en la atención en ventanilla
+SIGNIFICADO = {"HOLA": "Iniciar la atención",
+               "BIEN": "Calificar el servicio: bien",
+               "MAL": "Calificar el servicio: mal"}
+
 
 def aplicar_estilos():
     st.html(CSS)
@@ -35,10 +42,11 @@ def encabezado():
   {logo}
   <div class="lsc-sep"></div>
   <div>
-    <h1>Reconocimiento de Lengua de Señas Colombiana</h1>
-    <p class="lsc-sub">Visión por computador y un modelo en la nube que identifica señas a partir de un video.</p>
+    <h1>{NOMBRE_APP}</h1>
+    <p class="lsc-sub">{SUBTITULO_APP}</p>
     <div class="lsc-linea"></div>
-    <p class="lsc-contexto">Señas reconocidas: <b>HOLA</b> · <b>BIEN</b> · <b>MAL</b></p>
+    <p class="lsc-contexto">Prototipo para la atención de personas sordas en Secretarías de Educación ·
+      Piloto: Secretaría de Educación de Valledupar</p>
   </div>
 </div>""")
 
@@ -62,26 +70,40 @@ def etiqueta(texto: str):
     st.html(f'<div class="lsc-etiqueta">{texto}</div>')
 
 
+def bienvenida():
+    """Texto de bienvenida de la ventanilla y el uso de cada seña en la atención."""
+    senas = "".join(
+        f'<div class="lsc-significado" style="border-top-color:{COLORES.get(c, "#003151")}">'
+        f'<b style="color:{COLORES.get(c, "#003151")}">{c}</b><span>{escape(texto)}</span></div>'
+        for c, texto in SIGNIFICADO.items())
+    st.html(f"""
+<div class="lsc-bienvenida">
+  <p><b>Bienvenido al punto de atención accesible.</b> Haga su seña frente a la cámara (se graban
+  <b>3 segundos</b>) o cargue un video. El sistema la reconoce y muestra el mensaje para el funcionario.</p>
+  <div class="lsc-significados">{senas}</div>
+</div>""")
+
+
 def tarjeta_instrucciones(camara: bool = False):
     if camara:
         st.html("""
 <div class="lsc-tarjeta suave">
-  <h4>Cómo grabar con la cámara</h4>
+  <h4>Cómo grabar la seña con la cámara</h4>
   <ul>
-    <li>Pulsa <b>Activar cámara</b> y permite el acceso en el navegador.</li>
-    <li>Pulsa <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>3 segundos</b>.</li>
-    <li>Haz <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.</li>
-    <li>Empieza y termina con las manos abajo. Puedes repetir la grabación.</li>
+    <li>Pulse <b>Activar cámara</b> y permita el acceso en el navegador.</li>
+    <li>Pulse <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>3 segundos</b>.</li>
+    <li>Haga <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.</li>
+    <li>Empiece y termine con las manos abajo. Puede repetir la grabación.</li>
   </ul>
 </div>""")
         return
     st.html("""
 <div class="lsc-tarjeta suave">
-  <h4>Cómo grabar el video</h4>
+  <h4>Cómo debe ser el video</h4>
   <ul>
     <li>Duración de <b>2 a 4 segundos</b> con <b>una sola seña</b>.</li>
-    <li>De frente, sentado, de la cintura hacia arriba y con buena luz.</li>
-    <li>Empieza y termina con las manos abajo.</li>
+    <li>De frente, de la cintura hacia arriba y con buena luz.</li>
+    <li>La persona empieza y termina con las manos abajo.</li>
     <li>Formatos: <b>.mp4</b>, <b>.mov</b>, <b>.avi</b> o puntos clave <b>.npz</b>.</li>
   </ul>
 </div>""")
@@ -95,7 +117,9 @@ def _nivel_confianza(p: float):
     return "baja", "Baja"
 
 
-def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str, mensaje: str = ""):
+def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str, mensaje: str = "",
+                      aviso: str = ""):
+    """aviso: texto opcional bajo la confianza (p. ej. cuando la seña no se reconoció con seguridad)."""
     color = COLORES.get(ganadora, "#003151")
     p = probs.get(ganadora, 0.0)
     nivel, texto_nivel = _nivel_confianza(p)
@@ -116,6 +140,7 @@ def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str
   <div class="lsc-sena" style="color:{color}">{escape(ganadora)}</div>
   {f'<div class="lsc-atencion">{escape(mensaje)}</div>' if mensaje else ""}
   <div class="lsc-confianza">Confianza <b>{p * 100:.1f} %</b><span class="lsc-nivel {nivel}">{texto_nivel}</span></div>
+  {f'<div class="lsc-aviso-confianza">{escape(aviso)}</div>' if aviso else ""}
   <p class="lsc-desc">{escape(descripcion)}</p>
   <div class="lsc-etiqueta">Probabilidad por seña</div>
   {"".join(barras)}
@@ -147,7 +172,7 @@ def veredicto(real: str, prediccion: str):
   <div class="lsc-icono">{icono}</div>
   <div>
     <div class="lsc-titulo">{titulo}</div>
-    <div class="lsc-detalle">Seña real: <b>{escape(real)}</b> · El modelo reconoció: <b>{escape(prediccion)}</b></div>
+    <div class="lsc-detalle">Seña realizada: <b>{escape(real)}</b> · El sistema reconoció: <b>{escape(prediccion)}</b></div>
   </div>
 </div>""")
 
@@ -178,44 +203,53 @@ def titulo_lateral(texto: str):
 
 def contadores(videos: int, aciertos: int):
     st.html(f'<div class="lsc-contadores">'
-            f'<div class="lsc-contador"><b>{videos}</b><span>Videos confirmados</span></div>'
+            f'<div class="lsc-contador"><b>{videos}</b><span>Señas confirmadas</span></div>'
             f'<div class="lsc-contador"><b>{aciertos}</b><span>Aciertos</span></div></div>')
 
 
 def tarjeta_proyecto():
-    st.html("""
+    st.html(f"""
 <div class="lsc-proyecto">
-  <div class="lsc-proyecto-etiqueta">Proyecto</div>
-  <div class="lsc-proyecto-nombre">Reconocimiento LSC</div>
+  <div class="lsc-proyecto-etiqueta">Prototipo</div>
+  <div class="lsc-proyecto-nombre">{NOMBRE_APP}</div>
   <div class="lsc-proyecto-sep"></div>
   <div class="lsc-proyecto-autor">Ing. Rubert Eduardo Quintero Orozco</div>
-  <div class="lsc-proyecto-inst">Maestría en IA · U. de La Salle</div>
+  <div class="lsc-proyecto-inst">Maestría en Inteligencia Artificial – Universidad de La Salle</div>
+</div>""")
+
+
+def nota_relevo():
+    """Nota de la barra lateral: el sistema complementa al intérprete, no lo reemplaza."""
+    st.html("""
+<div class="lsc-relevo">
+  <b>Este sistema no reemplaza al intérprete.</b> Si la seña no se reconoce, se sugiere usar el
+  Centro de Relevo (servicio de interpretación en línea).
 </div>""")
 
 
 def banner_flujo():
-    """Ilustración general del proyecto (aportada por el autor) al inicio de "Cómo funciona"."""
+    """Ilustración general del sistema (aportada por el autor) al inicio de "Cómo funciona"."""
     if not FLUJO.exists():
         return
     with st.container(key="banner_flujo"):
         st.image(str(FLUJO), width="stretch")
-        st.html('<p class="lsc-banner-pie">Visión general del proyecto: del video a la seña reconocida.</p>')
+        st.html('<p class="lsc-banner-pie">Visión general: de la seña de la persona a la atención en ventanilla.</p>')
 
 
 def tarjeta_privacidad():
     st.html("""
 <div class="lsc-privacidad">
   <div class="lsc-privacidad-titulo"><span class="lsc-candado">✓</span>Datos protegidos</div>
-  <p>A Azure solo se envía la <b>imagen de trayectoria</b>, nunca el video.</p>
+  <p>El video no se guarda. A Azure solo se envía la <b>imagen de trayectoria</b>, sin rostros.</p>
   <p>Se usa la opción <b>nostore</b>: Azure no guarda ninguna copia.</p>
 </div>""")
 
 
 def pie_pagina():
-    st.html("""
+    st.html(f"""
 <div class="lsc-pie">
   <div class="lsc-linea"></div>
+  <b>{NOMBRE_APP}</b> · Prototipo de atención accesible para personas sordas en entidades públicas<br>
   <b>Ing. Rubert Eduardo Quintero Orozco</b><br>
-  <b>Maestría en Inteligencia Artificial · Universidad de La Salle</b><br>
-  Visión por Computador · Actividad 6 – Proyecto final
+  Maestría en Inteligencia Artificial · Universidad de La Salle
 </div>""")
