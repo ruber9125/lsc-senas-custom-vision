@@ -95,7 +95,10 @@ def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str
             f'<div class="lsc-barra{atenuada}"><span class="lsc-clase">{c}</span>'
             f'<div class="lsc-pista"><div class="lsc-relleno" style="width:{v:.1f}%;background:{COLORES.get(c, "#888")}"></div></div>'
             f'<span class="lsc-valor">{v:.1f} %</span></div>')
-    st.html(f"""
+    # El marco de la tarjeta lo pone el contenedor (estilos: st-key-tarjeta_resultado), que se estira
+    # hasta la altura de las tarjetas vecinas (video e imagen de trayectoria).
+    with st.container(key="tarjeta_resultado", height="stretch"):
+        st.html(f"""
 <div class="lsc-resultado">
   <span class="lsc-chip">Seña reconocida</span>
   <div class="lsc-sena" style="color:{color}">{escape(ganadora)}</div>

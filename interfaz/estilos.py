@@ -85,8 +85,15 @@ div[class*="st-key-panel_"] {{
   box-shadow: 0 1px 6px rgba(0, 49, 81, .05);
 }}
 
-/* ---------- Tarjeta de resultado ---------- */
-.lsc-resultado {{
+/* Video: altura máxima, para que un video vertical de celular no deje la fila el doble de alta que las otras tarjetas */
+div[class*="st-key-panel_video"] video {{ max-height: 280px; background: #000; border-radius: 8px; }}
+
+/* Imagen de trayectoria y su leyenda, centradas dentro de la tarjeta */
+div[class*="st-key-panel_trayectoria"] [data-testid="stElementContainer"]:has([data-testid="stImage"]) {{ align-self: center; }}
+div[class*="st-key-panel_trayectoria"] .lsc-leyenda {{ margin-left: auto; margin-right: auto; }}
+
+/* ---------- Tarjeta de resultado (el marco va en el contenedor, que iguala la altura de las tarjetas vecinas) ---------- */
+div[class*="st-key-tarjeta_resultado"] {{
   background: #fff; border: 1px solid var(--borde); border-left: 6px solid var(--dorado);
   border-radius: 14px; padding: 1.1rem 1.3rem; box-shadow: 0 4px 16px rgba(0, 49, 81, .08);
 }}

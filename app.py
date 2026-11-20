@@ -237,14 +237,14 @@ with tab1:
 
         col_video, col_img, col_res = st.columns([1.25, 0.95, 1.35], gap="medium")
         with col_video:
-            with st.container(key="panel_video"):
+            with st.container(key="panel_video", height="stretch"):   # las tres tarjetas, a la misma altura
                 ui.etiqueta("Video")
                 if archivo.name.lower().endswith(".npz"):
                     ui.estado_vacio("Archivo de puntos clave (.npz)", "No hay video para reproducir.")
                 else:
                     st.video(contenido)
         with col_img:
-            with st.container(key="panel_trayectoria"):
+            with st.container(key="panel_trayectoria", height="stretch"):
                 ui.etiqueta("Imagen de trayectoria")
                 st.image(png, width=224)
                 ui.leyenda_trayectoria(frames)
