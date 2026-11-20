@@ -24,7 +24,7 @@ import streamlit as st
 from sklearn.metrics import classification_report, confusion_matrix
 
 from lsc.azure_cv import clasificar
-from lsc.recorte import muy_cerca, recortar_sena
+from lsc.recorte import encuadre_inadecuado, recortar_sena
 from lsc.trayectoria import desde_npz, dibujar_trayectoria
 from interfaz import componentes as ui
 from interfaz.grabador import grabar_con_camara
@@ -127,7 +127,7 @@ def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None, rec
             datos = extraer_de_video(ruta, duracion_s=duracion_s)
         finally:
             os.remove(ruta)
-    info = {"frames_video": datos["frames"], "muy_cerca": muy_cerca(datos)}
+    info = {"frames_video": datos["frames"], "encuadre_inadecuado": encuadre_inadecuado(datos)}
     if recortar and ext != ".npz":
         # Los clips de entrenamiento contienen solo la seña: se quita la quietud para que la imagen se parezca.
         datos = recortar_sena(datos, datos.get("fps_puntos"))
@@ -224,6 +224,8 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None, recort
     registro = next((h for h in st.session_state["historial"] if h["huella"] == huella), None)
     ui.indicador_pasos(pasos, 5 if registro else 4)
 
+    if info["encuadre_inadecuado"]:          # antes del resultado: explica por qué puede no ser confiable
+        ui.aviso_encuadre()
     col_video, col_img, col_res = st.columns([1.25, 0.95, 1.35], gap="medium")
     with col_video:
         with st.container(key="panel_video", height="stretch"):   # las tres tarjetas, a la misma altura
@@ -241,8 +243,6 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None, recort
         aviso = AVISO_BAJA_CONFIANZA if probs.get(ganadora, 0.0) < CONFIANZA_MINIMA else ""
         ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""), MENSAJE.get(ganadora, ""),
                              aviso)
-    if info["muy_cerca"]:
-        ui.aviso_encuadre()
 
     # ----- Confirmación: la persona indica DESPUÉS cuál seña era realmente -----
     # El modelo decide primero, sin pistas; la respuesta real se pide después para no influir en nada.

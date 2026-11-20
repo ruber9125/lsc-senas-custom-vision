@@ -92,7 +92,9 @@ def tarjeta_instrucciones(camara: bool = False):
   <ul>
     <li>Pulse <b>Activar cámara</b> y permita el acceso en el navegador.</li>
     <li>Pulse <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>4 segundos</b>.</li>
-    <li>Haga <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.</li>
+    <li><b>Aléjese de la cámara</b> hasta que sus hombros queden sobre la <b>línea amarilla</b>: se le debe ver
+        de la cintura hacia arriba.</li>
+    <li>Haga <b>una sola seña</b>, de frente y con buena luz.</li>
     <li>Empiece y termine con las manos abajo. Puede repetir la grabación.</li>
   </ul>
 </div>""")
@@ -110,10 +112,10 @@ def tarjeta_instrucciones(camara: bool = False):
 
 
 def aviso_encuadre():
-    """Aviso (no bloquea): la persona está más cerca de la cámara que en los videos de entrenamiento."""
-    st.html('<div class="lsc-aviso-confianza"><b>Está muy cerca de la cámara.</b> Aléjese hasta que se vea de la '
-            'cintura hacia arriba, con espacio libre a los lados, y repita la seña: así el reconocimiento es más '
-            'confiable.</div>')
+    """Aviso (no bloquea): la cámara no ve bien el espacio de la seña (persona muy cerca o muy abajo)."""
+    st.html('<div class="lsc-aviso-confianza"><b>La cámara no alcanza a ver bien la seña.</b> La persona está muy '
+            'cerca o muy abajo en la imagen, y el resultado puede no ser confiable. Aléjese hasta que se le vea de '
+            'la <b>cintura hacia arriba</b>, con los hombros a media altura de la imagen, y repita la seña.</div>')
 
 
 def _nivel_confianza(p: float):

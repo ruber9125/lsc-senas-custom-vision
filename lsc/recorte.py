@@ -22,7 +22,8 @@ SUAVIZADO_S = 0.15          # ventana de la mediana que quita los saltos de un s
 HUECO_S = 0.25              # pausas más cortas que esto no parten la seña
 DURACION_MINIMA_S = 0.6     # un recorte más corto que esto se descarta (sería un error de detección)
 
-HOMBROS_MAX = 0.30          # hombros / lado mayor del video; en los clips de entrenamiento va de 0.18 a 0.25
+HOMBROS_MAX = 0.28          # hombros / lado mayor del video; en los clips de entrenamiento va de 0.18 a 0.25
+ESPACIO_MIN = 0.55          # imagen visible bajo los hombros, en anchos de hombro; en los clips va de 0.6 a 1.4
 
 
 def _centro_y_ancho(pose_px):
@@ -114,7 +115,19 @@ def fraccion_hombros(datos):
     return None if ancho is None else ancho / float(px.max())
 
 
-def muy_cerca(datos):
-    """True si la persona está más cerca de la cámara que en los videos con los que se entrenó el modelo."""
-    f = fraccion_hombros(datos)
-    return f is not None and f > HOMBROS_MAX
+def espacio_bajo_hombros(datos):
+    """Alto de la imagen que queda por debajo de los hombros, en anchos de hombro (None si no hay pose).
+
+    Es el espacio donde se hacen las señas frente al pecho. Si es pequeño (persona muy cerca o con los
+    hombros en el borde inferior), la cámara no ve el recorrido de la mano.
+    """
+    px = np.array([float(datos["ancho"]), float(datos["alto"])])
+    centro, ancho = _centro_y_ancho(np.asarray(datos["pose"])[..., :2] * px)
+    return None if ancho is None else float((px[1] - centro[1]) / ancho)
+
+
+def encuadre_inadecuado(datos):
+    """True si la cámara no ve bien el espacio de la seña: la persona está más cerca que en los videos con
+    los que se entrenó el modelo, o sus hombros quedan muy abajo en la imagen."""
+    f, e = fraccion_hombros(datos), espacio_bajo_hombros(datos)
+    return f is not None and (f > HOMBROS_MAX or e < ESPACIO_MIN)
