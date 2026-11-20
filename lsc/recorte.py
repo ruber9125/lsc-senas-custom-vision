@@ -11,6 +11,8 @@ quede prácticamente igual.
 """
 import numpy as np
 
+from .encuadre import OBJETIVO
+
 HOMBRO_IZQ, HOMBRO_DER = 11, 12
 MUNECAS = [15, 16]          # muñecas de MediaPipe Pose (existen aunque no se detecte la mano)
 
@@ -22,8 +24,6 @@ SUAVIZADO_S = 0.15          # ventana de la mediana que quita los saltos de un s
 HUECO_S = 0.25              # pausas más cortas que esto no parten la seña
 DURACION_MINIMA_S = 0.6     # un recorte más corto que esto se descarta (sería un error de detección)
 
-HOMBROS_MAX = 0.28          # hombros / lado mayor del video; en los clips de entrenamiento va de 0.18 a 0.25
-ESPACIO_MIN = 0.55          # imagen visible bajo los hombros, en anchos de hombro; en los clips va de 0.6 a 1.4
 FPS_MUESTRAS = 20.5         # fotogramas por segundo (mediana) de las muestras de entrenamiento: 16.7 a 25.6
 
 
@@ -100,38 +100,30 @@ def recortar_sena(datos, fps):
     if fin - inicio + 1 < DURACION_MINIMA_S * fps:                  # también cubre "ninguna mano se movió"
         return sin_cambio
 
-    corte = slice(inicio, fin + 1)
-    return dict(datos, pose=pose[corte], mano_izq=np.asarray(datos["mano_izq"])[corte],
-                mano_der=np.asarray(datos["mano_der"])[corte], frames=fin - inicio + 1)
+    return seleccionar(datos, slice(inicio, fin + 1))
 
 
-def fraccion_hombros(datos):
-    """Ancho de hombros dividido por el lado mayor del video (None si no hay pose).
-
-    Mide qué tan cerca está la persona de la cámara. Se usa el lado mayor para que un video vertical
-    y uno horizontal de la misma cámara den el mismo valor.
-    """
-    px = np.array([float(datos["ancho"]), float(datos["alto"])])
-    _, ancho = _centro_y_ancho(np.asarray(datos["pose"])[..., :2] * px)
-    return None if ancho is None else ancho / float(px.max())
-
-
-def espacio_bajo_hombros(datos):
-    """Alto de la imagen que queda por debajo de los hombros, en anchos de hombro (None si no hay pose).
-
-    Es el espacio donde se hacen las señas frente al pecho. Si es pequeño (persona muy cerca o con los
-    hombros en el borde inferior), la cámara no ve el recorrido de la mano.
-    """
-    px = np.array([float(datos["ancho"]), float(datos["alto"])])
-    centro, ancho = _centro_y_ancho(np.asarray(datos["pose"])[..., :2] * px)
-    return None if ancho is None else float((px[1] - centro[1]) / ancho)
+def seleccionar(datos, indices):
+    """Copia de `datos` solo con esos fotogramas (pose, manos y rostro) y "frames" actualizado."""
+    nuevo = dict(datos)
+    for clave in ("pose", "mano_izq", "mano_der", "rostro"):
+        if datos.get(clave) is not None:
+            nuevo[clave] = np.asarray(datos[clave])[indices]
+    nuevo["frames"] = len(nuevo["pose"])
+    return nuevo
 
 
-def encuadre_inadecuado(datos):
-    """True si la cámara no ve bien el espacio de la seña: la persona está más cerca que en los videos con
-    los que se entrenó el modelo, o sus hombros quedan muy abajo en la imagen."""
-    f, e = fraccion_hombros(datos), espacio_bajo_hombros(datos)
-    return f is not None and (f > HOMBROS_MAX or e < ESPACIO_MIN)
+def cortar_como_las_muestras(datos, fps):
+    """Deja solo la seña, cortada con el segmentador del proyecto de grado (el que cortó las muestras).
+
+    Necesita la visibilidad de la pose. Si ese segmentador no detecta la seña (por ejemplo, la pose no trae
+    visibilidad), se usa el recorte por altura de la muñeca de este módulo. Devuelve (datos, método)."""
+    from .segmentacion import cortar_sena
+    corte = cortar_sena(datos["pose"], fps, datos["ancho"], datos["alto"])
+    if corte is not None:
+        return seleccionar(datos, slice(corte[0], corte[1] + 1)), "segmentador"
+    recortado = recortar_sena(datos, fps)
+    return recortado, "altura" if recortado["frames"] < len(datos["pose"]) else "sin recorte"
 
 
 def ajustar_fps(datos, fps, objetivo=FPS_MUESTRAS):
@@ -147,16 +139,17 @@ def ajustar_fps(datos, fps, objetivo=FPS_MUESTRAS):
         return dict(datos, frames=T), fps
     n = max(2, round(T / fps * objetivo))
     idx = np.unique(np.round(np.linspace(0, T - 1, n)).astype(int))
-    return dict(datos, pose=np.asarray(datos["pose"])[idx], mano_izq=np.asarray(datos["mano_izq"])[idx],
-                mano_der=np.asarray(datos["mano_der"])[idx], frames=len(idx)), fps * len(idx) / T
+    return seleccionar(datos, idx), fps * len(idx) / T
 
 
 def _numero(x, decimales=0):
     return f"{x:.{decimales}f}".replace(".", ",")
 
 
-def comprobar_captura(datos, fps=None):
+def comprobar_captura(datos, fps=None, encuadre=None):
     """Compara la captura con los parámetros de las 60 muestras de entrenamiento (S00 y S01).
+
+    encuadre: resultado de lsc.encuadre.evaluar_grabacion (el criterio de encuadre del proyecto de grado).
 
     Devuelve una lista de filas {"Parámetro", "Esta captura", "Muestras de entrenamiento", "Cumple"}.
     "Muestras" es el rango medido en las muestras; "Cumple" usa una tolerancia que también cubre los 30
@@ -177,18 +170,27 @@ def comprobar_captura(datos, fps=None):
         fila("Duración de la seña", f"{_numero(T / fps, 1)} s", "1,5 a 2,9 s", 1.2 <= T / fps <= 3.2)
     fila("Fotogramas de la seña", str(T), "32 a 67", 28 <= T <= 70)
 
-    centro, ancho = _centro_y_ancho(pose[..., :2] * np.array([W, H]))
-    if centro is None:
+    e = encuadre or {}
+    if not e.get("con_pose"):
         fila("Persona detectada", "No", "Sí", False)
         return filas
-    f, e = ancho / max(W, H), (H - centro[1]) / ancho
-    fila("Ancho de hombros (tamaño de la persona)", f"{_numero(100 * f)} % del ancho", "18 a 21 % del ancho",
-         0.15 <= f <= 0.26)
-    fila("Altura de los hombros en la imagen", f"{_numero(100 * centro[1] / H)} % desde arriba", "56 a 63 % desde arriba",
-         0.48 <= centro[1] / H <= 0.76)
-    fila("Persona centrada", f"{_numero(100 * centro[0] / W)} % desde la izquierda", "50 a 52 % desde la izquierda",
-         0.40 <= centro[0] / W <= 0.60)
-    fila("Espacio visible bajo los hombros", f"{_numero(e, 1)} anchos de hombro", "1,0 a 1,4 anchos de hombro", e >= 0.65)
+    o = OBJETIVO
+    error = e["ojos"] / o.ojos - 1
+    fila("Distancia a la cámara" + ("" if e.get("con_cara") else " (estimada por los hombros)"),
+         "Igual que en las muestras" if abs(error) <= 0.005 else
+         f"Se ve un {_numero(abs(error) * 100)} % más {'grande' if error > 0 else 'pequeño'}",
+         "Tolerancia: 10 %", abs(error) <= o.tolerancia_salir)
+    if e.get("con_cara"):
+        fila("De frente a la cámara", "Sí" if e["desvio_nariz"] <= o.max_desvio_nariz else "Girado", "Sí",
+             e["desvio_nariz"] <= o.max_desvio_nariz)
+    fila("Persona centrada", f"{_numero(100 * e['centro_x'])} % desde la izquierda",
+         f"{_numero(100 * (o.centro_x - o.tolerancia_x))} a {_numero(100 * (o.centro_x + o.tolerancia_x))} %",
+         abs(e["centro_x"] - o.centro_x) <= o.tolerancia_x)
+    relajo = 1 - o.tolerancia_salir
+    fila("Espacio sobre los hombros", f"{_numero(e['holgura_arriba'], 2)} anchos de hombro",
+         f"Al menos {_numero(o.holgura_arriba * relajo, 2)}", e["holgura_arriba"] >= o.holgura_arriba * relajo)
+    fila("Espacio bajo los hombros", f"{_numero(e['holgura_abajo'], 2)} anchos de hombro",
+         f"Al menos {_numero(o.holgura_abajo * relajo, 2)}", e["holgura_abajo"] >= o.holgura_abajo * relajo)
 
     con_izq = ~np.isnan(np.asarray(datos["mano_izq"])[:, 0, 0])
     con_der = ~np.isnan(np.asarray(datos["mano_der"])[:, 0, 0])

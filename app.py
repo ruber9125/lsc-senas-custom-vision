@@ -24,7 +24,8 @@ import streamlit as st
 from sklearn.metrics import classification_report, confusion_matrix
 
 from lsc.azure_cv import clasificar
-from lsc.recorte import ajustar_fps, comprobar_captura, encuadre_inadecuado, recortar_sena
+from lsc.encuadre import evaluar_grabacion
+from lsc.recorte import ajustar_fps, comprobar_captura, cortar_como_las_muestras
 from lsc.trayectoria import desde_npz, dibujar_trayectoria
 from interfaz import componentes as ui
 from interfaz.grabador import grabar_con_camara
@@ -127,14 +128,16 @@ def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None, rec
             datos = extraer_de_video(ruta, duracion_s=duracion_s)
         finally:
             os.remove(ruta)
-    info = {"frames_video": datos["frames"], "encuadre_inadecuado": encuadre_inadecuado(datos)}
+    # Encuadre: el mismo criterio de la guía con la que se grabaron las muestras (proyecto de grado).
+    encuadre = evaluar_grabacion(datos)
+    info = {"frames_video": datos["frames"], "encuadre": {k: encuadre[k] for k in ("ok", "instruccion", "detalle")}}
     fps = datos.get("fps_puntos")
     if recortar and ext != ".npz":
-        # Se lleva la grabación a los parámetros de las muestras de entrenamiento: solo la seña (sin la
-        # quietud del inicio y del final) y al mismo ritmo de fotogramas.
-        datos = recortar_sena(datos, fps)
+        # Se lleva la grabación a los parámetros de las muestras de entrenamiento: el mismo ritmo de
+        # fotogramas y solo la seña, cortada con el segmentador que cortó esas muestras.
         datos, fps = ajustar_fps(datos, fps)
-    info["comprobacion"] = comprobar_captura(datos, fps)
+        datos, info["corte"] = cortar_como_las_muestras(datos, fps)
+    info["comprobacion"] = comprobar_captura(datos, fps, encuadre)
     png = dibujar_trayectoria(datos["pose"], datos["mano_izq"], datos["mano_der"], datos["ancho"], datos["alto"])
     probs = consultar_azure(png)
     return png, probs, datos["frames"], info
@@ -228,8 +231,8 @@ def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None, recort
     registro = next((h for h in st.session_state["historial"] if h["huella"] == huella), None)
     ui.indicador_pasos(pasos, 5 if registro else 4)
 
-    if info["encuadre_inadecuado"]:          # antes del resultado: explica por qué puede no ser confiable
-        ui.aviso_encuadre()
+    if not info["encuadre"]["ok"]:           # antes del resultado: explica por qué puede no ser confiable
+        ui.aviso_encuadre(info["encuadre"]["instruccion"], info["encuadre"]["detalle"])
     col_video, col_img, col_res = st.columns([1.25, 0.95, 1.35], gap="medium")
     with col_video:
         with st.container(key="panel_video", height="stretch"):   # las tres tarjetas, a la misma altura

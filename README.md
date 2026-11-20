@@ -56,6 +56,8 @@ certificado, traslado, cita, sí, no, gracias, ayuda…) y frases cortas.
 | `componentes_web/grabador/index.html` | Grabador con la cámara (componente web propio, sin paquetes nuevos): guía de encuadre, cuenta regresiva de 5 segundos y 4 segundos de grabación |
 | `lsc/extraccion.py` | Video → puntos clave con MediaPipe Holistic (mismo modelo y umbrales que la captura de los datos) |
 | `lsc/recorte.py` | Lleva las grabaciones con la cámara a los parámetros de las muestras de entrenamiento (solo la seña, al mismo ritmo de fotogramas) y compara cada captura con esas muestras: duración, tamaño y posición de la persona, mano detectada |
+| `lsc/encuadre.py` | Criterio de encuadre del sistema de captura con el que se grabaron las muestras: distancia a la cámara medida con los ojos, persona centrada y de frente, y espacio para que quepa la seña |
+| `lsc/segmentacion.py` | Segmentador con el que se cortaron las muestras (velocidad y altura de las muñecas): se usa para dejar solo la seña en las grabaciones con la cámara |
 | `lsc/trayectoria.py` | Puntos clave → imagen de trayectoria. **Idéntica** píxel a píxel a la usada en el entrenamiento |
 | `lsc/azure_cv.py` | Envía la imagen al endpoint de Azure (variante `nostore`: Azure no guarda las imágenes) |
 | `models/holistic_landmarker.task` | Modelo de MediaPipe Holistic (Google) |

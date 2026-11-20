@@ -92,8 +92,8 @@ def tarjeta_instrucciones(camara: bool = False):
   <ul>
     <li>Pulse <b>Activar cámara</b> y permita el acceso en el navegador.</li>
     <li>Pulse <b>Grabar seña</b>: hay una cuenta regresiva de <b>5 segundos</b> y luego se graban <b>4 segundos</b>.</li>
-    <li><b>Aléjese de la cámara</b> (cerca de 1,5 m) hasta que sus hombros queden sobre la <b>línea amarilla</b>: se le debe ver
-        de la cintura hacia arriba.</li>
+    <li><b>Ubíquese como indica la guía amarilla</b>: la cabeza dentro de las esquinas y los hombros entre las
+        dos líneas. Es el mismo encuadre con el que se grabaron las muestras de entrenamiento.</li>
     <li>Haga <b>una sola seña</b>, de frente y con buena luz.</li>
     <li>Empiece y termine con las manos abajo. Puede repetir la grabación.</li>
   </ul>
@@ -111,11 +111,11 @@ def tarjeta_instrucciones(camara: bool = False):
 </div>""")
 
 
-def aviso_encuadre():
-    """Aviso (no bloquea): la cámara no ve bien el espacio de la seña (persona muy cerca o muy abajo)."""
-    st.html('<div class="lsc-aviso-confianza"><b>La cámara no alcanza a ver bien la seña.</b> La persona está muy '
-            'cerca o muy abajo en la imagen, y el resultado puede no ser confiable. Aléjese hasta que se le vea de '
-            'la <b>cintura hacia arriba</b>, con los hombros a media altura de la imagen, y repita la seña.</div>')
+def aviso_encuadre(instruccion: str, detalle: str = ""):
+    """Aviso (no bloquea): el encuadre no es el de las muestras de entrenamiento. Dice qué corregir."""
+    st.html(f'<div class="lsc-aviso-confianza"><b>Encuadre distinto al de las muestras de entrenamiento: '
+            f'{escape(instruccion)}.</b> {escape(detalle.capitalize() + "." if detalle else "")} '
+            'El resultado puede no ser confiable; corrija el encuadre y repita la seña.</div>')
 
 
 def _nivel_confianza(p: float):

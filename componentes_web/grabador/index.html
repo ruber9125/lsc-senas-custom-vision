@@ -73,8 +73,8 @@
     <button class="secundario" id="btnApagar" type="button" hidden>Apagar cámara</button>
   </div>
   <div class="estado" id="estado" role="status" aria-live="polite"></div>
-  <p class="ayuda"><b>Aléjese de la cámara</b> (cerca de 1,5 m) hasta que su cabeza quede en el óvalo y sus hombros sobre la línea
-    amarilla: se le debe ver de la cintura hacia arriba. De frente y con buena luz. Empiece y termine con las manos abajo.</p>
+  <p class="ayuda"><b>Ubíquese como indica la guía amarilla</b>: la cabeza dentro de las esquinas y los hombros entre las dos
+    líneas. Es el mismo encuadre con el que se grabaron las muestras de entrenamiento. De frente y con buena luz. Empiece y termine con las manos abajo.</p>
 </div>
 
 <script>
@@ -114,21 +114,39 @@
   var stream = null, ocupado = false, grabaciones = 0;
 
   // ---------- Guía de encuadre ----------
-  // En los videos con los que se entrenó el modelo, los hombros ocupan cerca del 20 % del lado mayor de la
-  // imagen y quedan al 61 % de la altura. Con la persona más cerca, la cámara no ve el recorrido de la mano.
+  // Es la guía con la que se grabaron las muestras de entrenamiento (proyecto de grado, scripts/encuadre.py y
+  // configs/captura.yaml): una ZONA para la cabeza y una FRANJA para la línea de hombros. No es una silueta:
+  // solo fija la distancia y el encuadre, y deja libres el torso y las manos.
+  var ENCUADRE = { ojos: 0.121, hombrosY: 0.56, toleranciaY: 0.03, centroX: 0.524, toleranciaX: 0.06,
+                   toleranciaSalir: 0.10, caraAncho: 1.6, caraAlto: 1.35, caraSobreHombros: 1.88 };
   var guia = $("guia");
+  function linea(x1, y1, x2, y2) {
+    return '<line class="trazo tope" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
+  }
   function dibujarGuia() {
-    var w = vista.videoWidth || 1280, h = vista.videoHeight || 720;
-    var hombros = 0.20 * Math.max(w, h), cx = w / 2, y = (w >= h ? 0.61 : 0.50) * h;
-    var x1 = cx - hombros / 2, x2 = cx + hombros / 2, tope = hombros * 0.09, letra = Math.max(w, h) * 0.03;
+    var w = vista.videoWidth || 1280, h = vista.videoHeight || 720, e = ENCUADRE, svg = "";
     escena.style.aspectRatio = w + " / " + h;                 // la guía y el video comparten las mismas medidas
     guia.setAttribute("viewBox", "0 0 " + w + " " + h);
-    guia.innerHTML =
-      '<ellipse class="trazo" cx="' + cx + '" cy="' + (y - hombros * 0.70) + '" rx="' + (hombros * 0.21) + '" ry="' + (hombros * 0.29) + '"/>' +
-      '<line class="trazo" x1="' + x1 + '" y1="' + y + '" x2="' + x2 + '" y2="' + y + '"/>' +
-      '<line class="trazo tope" x1="' + x1 + '" y1="' + (y - tope) + '" x2="' + x1 + '" y2="' + (y + tope) + '"/>' +
-      '<line class="trazo tope" x1="' + x2 + '" y1="' + (y - tope) + '" x2="' + x2 + '" y2="' + (y + tope) + '"/>' +
-      '<text x="' + cx + '" y="' + (y + letra * 1.6) + '" font-size="' + letra + '">Hombros sobre esta línea</text>';
+    // Franja donde debe quedar la línea de hombros: dos líneas a cada lado, con el centro libre.
+    [e.hombrosY - e.toleranciaY, e.hombrosY + e.toleranciaY].forEach(function (y) {
+      svg += linea(0.02 * w, y * h, 0.30 * w, y * h) + linea(0.70 * w, y * h, 0.98 * w, y * h);
+    });
+    // Zona de la cabeza: el tamaño sale de la distancia entre ojos objetivo (fracción del ALTO de la imagen),
+    // agrandado con las tolerancias que la guía acepta. La vista previa está en espejo, así que el centro
+    // horizontal se refleja.
+    var anchoCabeza = e.ojos * e.caraAncho * h, altoCabeza = anchoCabeza * e.caraAlto;
+    var anchoZona = anchoCabeza * (1 + e.toleranciaSalir) + 2 * e.toleranciaX * w;
+    var altoZona = altoCabeza * (1 + e.toleranciaSalir) + 2 * e.toleranciaY * h;
+    var cx = (1 - e.centroX) * w, cy = (e.hombrosY - e.ojos * e.caraSobreHombros) * h;
+    var x0 = cx - anchoZona / 2, x1 = cx + anchoZona / 2, y0 = cy - altoZona / 2, y1 = cy + altoZona / 2;
+    var esquina = Math.min(anchoZona, altoZona) * 0.22;
+    [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]].forEach(function (c) {
+      svg += linea(c[0], c[1], c[0] + c[2] * esquina, c[1]) + linea(c[0], c[1], c[0], c[1] + c[3] * esquina);
+    });
+    var letra = h * 0.042;
+    svg += '<text x="' + cx + '" y="' + (y0 - letra * 0.5) + '" font-size="' + letra + '">Cabeza aquí</text>' +
+           '<text x="' + (0.16 * w) + '" y="' + ((e.hombrosY + e.toleranciaY) * h + letra * 1.25) + '" font-size="' + letra + '">Hombros entre las líneas</text>';
+    guia.innerHTML = svg;
     ajustarAltura();
   }
   vista.addEventListener("loadedmetadata", dibujarGuia);
@@ -189,7 +207,7 @@
         btnGrabar.hidden = false; btnApagar.hidden = false;
         btnGrabar.textContent = grabaciones ? "⟳ Repetir grabación" : "⏺ Grabar seña";
         s.getVideoTracks()[0].addEventListener("ended", apagar);       // p. ej. si se desconecta la cámara
-        decir("Cámara lista. Ubique sus hombros sobre la línea amarilla y pulse el botón para grabar " + SEGUNDOS + " segundos.");
+        decir("Cámara lista. Ubíquese en la guía amarilla y pulse el botón para grabar " + SEGUNDOS + " segundos.");
       })
       .catch(function (e) { btnActivar.disabled = false; decir(mensajeDeError(e), true); });
   }

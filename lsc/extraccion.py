@@ -17,10 +17,30 @@ FPS_OBJETIVO = 23.5      # fps aproximados de las grabaciones de entrenamiento
 MAX_FRAMES = 150         # límite de seguridad (~6 s): la app es para UNA seña corta
 
 
+PUNTOS_ROSTRO = [33, 263, 1]   # esquinas externas de los ojos y nariz: lo único del rostro que se conserva
+
+
 def _arreglo(puntos, n):
     out = np.full((n, 3), np.nan, dtype=np.float32)
     for i, p in enumerate(puntos or []):
         out[i] = [p.x, p.y, p.z]
+    return out
+
+
+def _pose(puntos):
+    """(33, 4): x, y, z y visibilidad, como en los .npz del sistema de captura de la tesis."""
+    out = np.full((33, 4), np.nan, dtype=np.float32)
+    for i, p in enumerate(puntos or []):
+        out[i] = [p.x, p.y, p.z, p.visibility if p.visibility is not None else np.nan]
+    return out
+
+
+def _rostro(puntos):
+    """(3, 2): ojos y nariz, para medir la distancia a la cámara como en la guía de encuadre de la tesis."""
+    out = np.full((len(PUNTOS_ROSTRO), 2), np.nan, dtype=np.float32)
+    if puntos and len(puntos) > max(PUNTOS_ROSTRO):
+        for j, i in enumerate(PUNTOS_ROSTRO):
+            out[j] = [puntos[i].x, puntos[i].y]
     return out
 
 
@@ -50,7 +70,8 @@ def _fps_estimado(ruta_video, duracion_s):
 
 
 def extraer_de_video(ruta_video, duracion_s=None):
-    """Devuelve pose, mano_izq, mano_der (NaN donde no se detectó), ancho, alto y frames procesados.
+    """Devuelve pose (x, y, z, visibilidad), mano_izq, mano_der, rostro (ojos y nariz), ancho, alto y frames.
+    Donde no se detectó hay NaN.
 
     duracion_s (opcional): duración real de la grabación en segundos, medida por el grabador de la
     cámara. Si se indica, los fps se calculan como fotogramas / duración (no se confía en el contenedor).
@@ -77,7 +98,7 @@ def extraer_de_video(ruta_video, duracion_s=None):
         min_pose_landmarks_confidence=CONFIANZA,
         min_hand_landmarks_confidence=CONFIANZA,
     )
-    pose, izq, der = [], [], []
+    pose, izq, der, rostro = [], [], [], []
     ancho = alto = None
     i = 0
     with vision.HolisticLandmarker.create_from_options(opciones) as holistic:
@@ -90,7 +111,8 @@ def extraer_de_video(ruta_video, duracion_s=None):
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 r = holistic.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb),
                                               int(i * 1000 / fps))
-                pose.append(_arreglo(r.pose_landmarks, 33))
+                pose.append(_pose(r.pose_landmarks))
+                rostro.append(_rostro(r.face_landmarks))
                 izq.append(_arreglo(r.left_hand_landmarks, 21))
                 der.append(_arreglo(r.right_hand_landmarks, 21))
             i += 1
@@ -103,5 +125,5 @@ def extraer_de_video(ruta_video, duracion_s=None):
         raise ValueError("No se detectó a ninguna persona (hombros) en el video.")
     if np.isnan(izq[:, 0, 0]).all() and np.isnan(der[:, 0, 0]).all():
         raise ValueError("No se detectaron manos en el video.")
-    return {"pose": pose, "mano_izq": izq, "mano_der": der, "ancho": ancho, "alto": alto,
+    return {"pose": pose, "mano_izq": izq, "mano_der": der, "rostro": np.array(rostro), "ancho": ancho, "alto": alto,
             "frames": len(pose), "fps_video": fps, "fps_puntos": fps / paso}
