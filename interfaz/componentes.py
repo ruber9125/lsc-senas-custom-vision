@@ -62,7 +62,19 @@ def etiqueta(texto: str):
     st.html(f'<div class="lsc-etiqueta">{texto}</div>')
 
 
-def tarjeta_instrucciones():
+def tarjeta_instrucciones(camara: bool = False):
+    if camara:
+        st.html("""
+<div class="lsc-tarjeta suave">
+  <h4>Cómo grabar con la cámara</h4>
+  <ul>
+    <li>Pulsa <b>Activar cámara</b> y permite el acceso en el navegador.</li>
+    <li>Pulsa <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>4 segundos</b>.</li>
+    <li>Haz <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.</li>
+    <li>Empieza y termina con las manos abajo. Puedes repetir la grabación.</li>
+  </ul>
+</div>""")
+        return
     st.html("""
 <div class="lsc-tarjeta suave">
   <h4>Cómo grabar el video</h4>
@@ -83,7 +95,7 @@ def _nivel_confianza(p: float):
     return "baja", "Baja"
 
 
-def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str):
+def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str, mensaje: str = ""):
     color = COLORES.get(ganadora, "#003151")
     p = probs.get(ganadora, 0.0)
     nivel, texto_nivel = _nivel_confianza(p)
@@ -102,6 +114,7 @@ def tarjeta_resultado(ganadora: str, probs: dict, clases: list, descripcion: str
 <div class="lsc-resultado">
   <span class="lsc-chip">Seña reconocida</span>
   <div class="lsc-sena" style="color:{color}">{escape(ganadora)}</div>
+  {f'<div class="lsc-atencion">{escape(mensaje)}</div>' if mensaje else ""}
   <div class="lsc-confianza">Confianza <b>{p * 100:.1f} %</b><span class="lsc-nivel {nivel}">{texto_nivel}</span></div>
   <p class="lsc-desc">{escape(descripcion)}</p>
   <div class="lsc-etiqueta">Probabilidad por seña</div>

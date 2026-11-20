@@ -24,12 +24,43 @@ def _arreglo(puntos, n):
     return out
 
 
-def extraer_de_video(ruta_video):
-    """Devuelve pose, mano_izq, mano_der (NaN donde no se detectó), ancho, alto y frames procesados."""
+def _fps_estimado(ruta_video, duracion_s):
+    """fps real de un video cuyo contenedor no lo informa bien (típico en los .webm del navegador).
+
+    Cuenta los fotogramas leyéndolos uno a uno hasta el final (no se confía en CAP_PROP_FRAME_COUNT)
+    y los divide por la duración: la que midió el grabador o, si no se conoce, la marca de tiempo
+    del último fotograma. Devuelve None si no se puede estimar.
+    """
+    cap = cv2.VideoCapture(str(ruta_video))
+    n, ultimo_ms = 0, 0.0
+    while cap.grab():
+        n += 1
+        ultimo_ms = max(ultimo_ms, cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0)
+    cap.release()
+    if n == 0:
+        return None
+    if duracion_s and duracion_s > 0:
+        duracion = float(duracion_s)
+    elif n > 1 and ultimo_ms > 0:
+        duracion = ultimo_ms / 1000 * n / (n - 1)      # la última marca es el INICIO del último fotograma
+    else:
+        return None
+    fps = n / duracion
+    return fps if 0 < fps <= 120 else None
+
+
+def extraer_de_video(ruta_video, duracion_s=None):
+    """Devuelve pose, mano_izq, mano_der (NaN donde no se detectó), ancho, alto y frames procesados.
+
+    duracion_s (opcional): duración real de la grabación en segundos. Solo se usa cuando el video
+    no informa bien sus fps (<= 0 o > 120), para estimarlos como fotogramas / duración.
+    """
     cap = cv2.VideoCapture(str(ruta_video))
     if not cap.isOpened():
         raise ValueError("No se pudo abrir el video.")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+    if not 0 < fps <= 120:                             # también descarta NaN
+        fps = _fps_estimado(ruta_video, duracion_s) or 30.0
     # Si el video tiene más fps que las grabaciones de entrenamiento (p. ej. 30 o 60),
     # se toma 1 de cada `paso` fotogramas para que la densidad de puntos sea parecida.
     paso = max(1, round(fps / FPS_OBJETIVO))

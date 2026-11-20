@@ -4,7 +4,8 @@ Aplicación web del **Proyecto Final (Actividad 6) de Visión por Computador** �
 
 Autor: **Ing. Rubert Eduardo Quintero Orozco**
 
-El usuario sube un video corto con **una seña** de la Lengua de Señas Colombiana y la app la reconoce automáticamente.
+El usuario **graba con la cámara** del dispositivo (computador, celular o tableta) o **carga** un video corto con
+**una seña** de la Lengua de Señas Colombiana, y la app la reconoce automáticamente.
 
 ## Flujo
 
@@ -23,6 +24,8 @@ el recall, el F1, la matriz de confusión y las curvas ROC/AUC.
 |---|---|
 | `app.py` | Interfaz Streamlit: reconocer una seña, métricas de la sesión y explicación |
 | `interfaz/` | Presentación: estilos (`estilos.py`), componentes visuales (`componentes.py`) y gráficos Plotly (`graficos.py`) |
+| `interfaz/grabador.py` | Lado de Python del grabador: recibe el video de la cámara y lo entrega al mismo flujo que los videos cargados |
+| `componentes_web/grabador/index.html` | Grabador con la cámara (componente web propio, sin paquetes nuevos): cuenta regresiva 3-2-1 y 4 segundos de grabación |
 | `lsc/extraccion.py` | Video → puntos clave con MediaPipe Holistic (mismo modelo y umbrales que la captura de los datos) |
 | `lsc/trayectoria.py` | Puntos clave → imagen de trayectoria. **Idéntica** píxel a píxel a la usada en el entrenamiento |
 | `lsc/azure_cv.py` | Envía la imagen al endpoint de Azure (variante `nostore`: Azure no guarda las imágenes) |

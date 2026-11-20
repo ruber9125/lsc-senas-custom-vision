@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grabador de señas</title>
+<style>
+  :root { --azul: #003151; --dorado: #F7AB00; --texto: #1B2B3A; --suave: #5B6B7A; --borde: #DCE3EA;
+          --fondo-suave: #F3F6F9; --rojo: #B3261E; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { font-family: "Source Sans Pro", "Source Sans 3", "Segoe UI", Arial, sans-serif; color: var(--texto);
+         font-size: 15px; line-height: 1.45; }
+  .grabador { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 14px;
+              margin: 2px; box-shadow: 0 1px 6px rgba(0, 49, 81, .05); }
+  .escena { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #0E1A24; border-radius: 10px;
+            overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  /* Espejo SOLO en la vista previa (CSS). El video que se graba es el del stream original, sin voltear. */
+  video { width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); display: none; background: #0E1A24; }
+  .escena.activa video { display: block; }
+  .aviso-inicial { color: #C9D6E2; text-align: center; padding: 16px; font-size: 14px; }
+  .aviso-inicial b { display: block; color: #fff; font-size: 16px; margin-bottom: 4px; }
+  .escena.activa .aviso-inicial { display: none; }
+  .cuenta { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+            background: rgba(0, 49, 81, .45); color: #fff; font-size: 120px; font-weight: 800; }
+  .cuenta.visible { display: flex; }
+  .grabando { position: absolute; top: 10px; left: 10px; display: none; align-items: center; gap: 7px;
+              background: rgba(0, 0, 0, .6); color: #fff; font-weight: 700; font-size: 13px; padding: 5px 10px;
+              border-radius: 999px; letter-spacing: .03em; }
+  .grabando.visible { display: flex; }
+  .grabando i { width: 11px; height: 11px; border-radius: 50%; background: #FF3B30; animation: parpadeo 1s infinite; }
+  @keyframes parpadeo { 50% { opacity: .25; } }
+  .tiempo { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; background: rgba(255, 255, 255, .25); display: none; }
+  .tiempo.visible { display: block; }
+  .tiempo div { height: 100%; width: 0; background: #FF3B30; }
+  .controles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button { font: inherit; font-weight: 700; border-radius: 10px; padding: 10px 16px; cursor: pointer;
+           border: 2px solid var(--azul); min-height: 44px; }
+  button.principal { background: var(--azul); color: #fff; flex: 1 1 200px; }
+  button.principal:hover:not(:disabled) { background: #1D4E73; border-color: #1D4E73; }
+  button.secundario { background: #fff; color: var(--azul); border-color: var(--borde); font-weight: 600; }
+  button.secundario:hover:not(:disabled) { border-color: var(--azul); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button[hidden] { display: none; }
+  .estado { margin-top: 10px; font-size: 14px; font-weight: 600; color: var(--azul); min-height: 20px; }
+  .estado.error { color: var(--rojo); background: rgba(179, 38, 30, .06); border: 1px solid rgba(179, 38, 30, .3);
+                  border-radius: 10px; padding: 9px 12px; font-weight: 500; }
+  .ayuda { margin: 8px 0 0; font-size: 13.5px; color: var(--suave); border-left: 3px solid var(--dorado); padding-left: 10px; }
+  @media (max-width: 480px) { .cuenta { font-size: 84px; } button { flex: 1 1 100%; } }
+</style>
+</head>
+<body>
+<div class="grabador" id="raiz">
+  <div class="escena" id="escena">
+    <video id="vista" autoplay playsinline muted></video>
+    <div class="aviso-inicial" id="avisoInicial"><b>Cámara apagada</b>Pulse «Activar cámara» y permita el acceso cuando el navegador lo pida.</div>
+    <div class="cuenta" id="cuenta"></div>
+    <div class="grabando" id="grabando"><i></i>Grabando</div>
+    <div class="tiempo" id="tiempo"><div id="tiempoBarra"></div></div>
+  </div>
+  <div class="controles">
+    <button class="principal" id="btnActivar" type="button">📷 Activar cámara</button>
+    <button class="principal" id="btnGrabar" type="button" hidden>⏺ Grabar seña</button>
+    <button class="secundario" id="btnApagar" type="button" hidden>Apagar cámara</button>
+  </div>
+  <div class="estado" id="estado" role="status" aria-live="polite"></div>
+  <p class="ayuda">Ubíquese de frente, de la cintura hacia arriba, con buena luz. Empiece y termine con las manos abajo.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Protocolo de componentes de Streamlit (implementado a mano, sin paso de build) ----------
+  function enviar(tipo, datos) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: tipo }, datos || {}), "*");
+  }
+  var ultimaAltura = 0;
+  function ajustarAltura() {
+    var h = Math.ceil(document.documentElement.getBoundingClientRect().height) + 4;
+    if (h !== ultimaAltura) { ultimaAltura = h; enviar("streamlit:setFrameHeight", { height: h }); }
+  }
+  function enviarValor(valor) {
+    enviar("streamlit:setComponentValue", { value: valor, dataType: "json" });
+  }
+
+  var SEGUNDOS = 4;            // duración de la grabación (Python puede cambiarla con el argumento "segundos")
+  var CUENTA = 3;              // cuenta regresiva
+  window.addEventListener("message", function (ev) {
+    var d = ev.data || {};
+    if (d.type !== "streamlit:render") return;
+    var args = d.args || {};
+    if (typeof args.segundos === "number" && args.segundos > 0 && args.segundos <= 10) SEGUNDOS = args.segundos;
+    if (typeof args.cuenta === "number" && args.cuenta >= 0 && args.cuenta <= 10) CUENTA = args.cuenta;
+    ajustarAltura();           // un "render" nuevo NO reinicia el grabador: solo actualiza argumentos
+  });
+
+  // ---------- Elementos ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var escena = $("escena"), vista = $("vista"), cuenta = $("cuenta"), grabando = $("grabando"),
+      tiempo = $("tiempo"), tiempoBarra = $("tiempoBarra"), estado = $("estado"),
+      btnActivar = $("btnActivar"), btnGrabar = $("btnGrabar"), btnApagar = $("btnApagar");
+
+  var stream = null, ocupado = false, grabaciones = 0;
+
+  function decir(texto, esError) {
+    estado.textContent = texto || "";
+    estado.className = "estado" + (esError ? " error" : "");
+    ajustarAltura();
+  }
+
+  function tipoSoportado() {
+    if (typeof MediaRecorder === "undefined") return null;
+    var candidatos = ["video/webm;codecs=vp8", "video/webm;codecs=vp9", "video/webm", "video/mp4"];   // mp4: Safari
+    for (var i = 0; i < candidatos.length; i++) {
+      try { if (MediaRecorder.isTypeSupported(candidatos[i])) return candidatos[i]; } catch (e) { /* sigue */ }
+    }
+    return "";                 // que el navegador elija su formato por defecto
+  }
+
+  function mensajeDeError(e) {
+    var n = (e && e.name) || "";
+    if (n === "NotAllowedError" || n === "PermissionDeniedError" || n === "SecurityError")
+      return "No hay permiso para usar la cámara. Permita el acceso en el candado de la barra de direcciones del navegador y vuelva a pulsar «Activar cámara».";
+    if (n === "NotFoundError" || n === "DevicesNotFoundError" || n === "OverconstrainedError")
+      return "No se encontró ninguna cámara en este dispositivo. Conecte una o use la opción «Cargar un video».";
+    if (n === "NotReadableError" || n === "TrackStartError" || n === "AbortError")
+      return "La cámara está siendo usada por otra aplicación (por ejemplo una videollamada). Ciérrela e intente de nuevo.";
+    return "No se pudo abrir la cámara (" + (n || "error desconocido") + "). Intente de nuevo o use la opción «Cargar un video».";
+  }
+
+  function soporteDisponible() {
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      decir("Este navegador no permite usar la cámara aquí. La cámara solo funciona en páginas seguras (HTTPS) o en " +
+            "localhost. Abra la aplicación con https:// o use la opción «Cargar un video».", true);
+      return false;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      decir("Este navegador no puede grabar video (no tiene MediaRecorder). Actualícelo o use la opción «Cargar un video».", true);
+      return false;
+    }
+    return true;
+  }
+
+  // ---------- Cámara ----------
+  function activar() {
+    if (ocupado || !soporteDisponible()) return;
+    btnActivar.disabled = true;
+    decir("Solicitando acceso a la cámara…");
+    navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: "user" }, audio: false })
+      .then(function (s) {
+        stream = s;
+        vista.srcObject = s;
+        var p = vista.play(); if (p && p.catch) p.catch(function () {});
+        escena.classList.add("activa");
+        btnActivar.hidden = true; btnActivar.disabled = false;
+        btnGrabar.hidden = false; btnApagar.hidden = false;
+        btnGrabar.textContent = grabaciones ? "⟳ Repetir grabación" : "⏺ Grabar seña";
+        s.getVideoTracks()[0].addEventListener("ended", apagar);       // p. ej. si se desconecta la cámara
+        decir("Cámara lista. Pulse el botón para grabar " + SEGUNDOS + " segundos.");
+      })
+      .catch(function (e) { btnActivar.disabled = false; decir(mensajeDeError(e), true); });
+  }
+
+  function apagar() {
+    if (ocupado) return;
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; vista.srcObject = null;
+    escena.classList.remove("activa");
+    btnActivar.hidden = false; btnGrabar.hidden = true; btnApagar.hidden = true;
+    decir(grabaciones ? "Cámara apagada. La última grabación ya fue enviada." : "");
+  }
+
+  // ---------- Grabación: cuenta regresiva 3-2-1 y luego SEGUNDOS segundos ----------
+  function iniciar() {
+    if (ocupado || !stream) return;
+    ocupado = true;
+    btnGrabar.disabled = true; btnApagar.disabled = true;
+    var n = CUENTA;
+    if (n <= 0) { grabar(); return; }
+    cuenta.textContent = n; cuenta.classList.add("visible");
+    decir("Prepárese: manos abajo…");
+    var reloj = setInterval(function () {
+      n -= 1;
+      if (n > 0) { cuenta.textContent = n; return; }
+      clearInterval(reloj);
+      cuenta.classList.remove("visible");
+      grabar();
+    }, 1000);
+  }
+
+  function terminar(mensaje, esError) {
+    ocupado = false;
+    grabando.classList.remove("visible"); tiempo.classList.remove("visible"); cuenta.classList.remove("visible");
+    tiempoBarra.style.width = "0";
+    btnGrabar.disabled = false; btnApagar.disabled = false;
+    btnGrabar.textContent = grabaciones ? "⟳ Repetir grabación" : "⏺ Grabar seña";
+    decir(mensaje, esError);
+  }
+
+  function grabar() {
+    var tipo = tipoSoportado(), grabadora, trozos = [], t0 = 0, animacion = 0;
+    try {
+      var opciones = { videoBitsPerSecond: 2500000 };
+      if (tipo) opciones.mimeType = tipo;
+      grabadora = new MediaRecorder(stream, opciones);      // graba el stream ORIGINAL (sin espejo)
+    } catch (e) {
+      terminar("Este navegador no pudo iniciar la grabación. Use la opción «Cargar un video».", true);
+      return;
+    }
+    grabadora.ondataavailable = function (ev) { if (ev.data && ev.data.size) trozos.push(ev.data); };
+    grabadora.onerror = function () { cancelAnimationFrame(animacion); terminar("La grabación falló. Intente de nuevo.", true); };
+    grabadora.onstart = function () {
+      t0 = performance.now();
+      grabando.classList.add("visible"); tiempo.classList.add("visible");
+      decir("Grabando… haga la seña ahora.");
+      (function avanzar() {
+        var f = Math.min(1, (performance.now() - t0) / (SEGUNDOS * 1000));
+        tiempoBarra.style.width = (f * 100).toFixed(1) + "%";
+        if (f < 1 && grabadora.state === "recording") animacion = requestAnimationFrame(avanzar);
+      })();
+      setTimeout(function () { if (grabadora.state === "recording") grabadora.stop(); }, SEGUNDOS * 1000);
+    };
+    grabadora.onstop = function () {
+      var duracion = (performance.now() - t0) / 1000;      // duración REAL, medida con performance.now()
+      cancelAnimationFrame(animacion);
+      var mime = (grabadora.mimeType || tipo || "video/webm");
+      var blob = new Blob(trozos, { type: mime });
+      if (!blob.size) { terminar("La grabación quedó vacía. Intente de nuevo.", true); return; }
+      decir("Enviando la grabación para analizarla…");
+      var lector = new FileReader();
+      lector.onerror = function () { terminar("No se pudo leer la grabación. Intente de nuevo.", true); };
+      lector.onload = function () {
+        var url = String(lector.result), b64 = url.slice(url.indexOf(",") + 1);
+        var id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+                 : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+        grabaciones += 1;
+        enviarValor({ id: id, video_b64: b64, mimeType: mime, duracion_s: Math.round(duracion * 1000) / 1000 });
+        terminar("Grabación enviada (" + duracion.toFixed(1) + " s). El resultado aparece más abajo.");
+      };
+      lector.readAsDataURL(blob);
+    };
+    try { grabadora.start(); }
+    catch (e) { terminar("Este navegador no pudo iniciar la grabación. Use la opción «Cargar un video».", true); }
+  }
+
+  btnActivar.addEventListener("click", activar);
+  btnGrabar.addEventListener("click", iniciar);
+  btnApagar.addEventListener("click", apagar);
+
+  if (window.ResizeObserver) new ResizeObserver(ajustarAltura).observe(document.documentElement);
+  window.addEventListener("load", ajustarAltura);
+
+  enviar("streamlit:componentReady", { apiVersion: 1 });
+  ajustarAltura();
+  soporteDisponible();         // si la cámara no es posible aquí, se avisa desde el principio
+})();
+</script>
+</body>
+</html>

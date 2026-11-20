@@ -5,7 +5,8 @@ Actividad 6 · Proyecto Final · Visión por Computador · Maestría en IA, Univ
 Flujo:  video -> MediaPipe Holistic -> imagen de trayectoria (224x224)
         -> modelo publicado en Azure Custom Vision (endpoint REST) -> seña reconocida.
 
-Cada video se sube UNA vez. El modelo reconoce la seña sin pistas; DESPUÉS la persona confirma cuál era
+El video llega por dos caminos (grabarlo con la cámara o cargar un archivo) que terminan en el MISMO flujo.
+Cada video se analiza UNA vez. El modelo reconoce la seña sin pistas; DESPUÉS la persona confirma cuál era
 realmente, y con eso la app actualiza la precisión, la matriz de confusión y las curvas ROC de la sesión.
 """
 import hashlib
@@ -24,12 +25,19 @@ from sklearn.metrics import classification_report, confusion_matrix
 from lsc.azure_cv import clasificar
 from lsc.trayectoria import desde_npz, dibujar_trayectoria
 from interfaz import componentes as ui
+from interfaz.grabador import grabar_con_camara
 from interfaz.graficos import CONFIG as CONFIG_GRAFICOS, curvas_roc, matriz_confusion
 
 CLASES = ["HOLA", "BIEN", "MAL"]
 DESCRIPCION = {"HOLA": "Saludo: la mano abierta sube a la frente y sale hacia afuera.",
                "BIEN": "Pulgar hacia arriba frente al pecho.",
                "MAL": "Pulgar hacia abajo frente al pecho."}
+# Mensaje de atención que acompaña a cada seña reconocida
+MENSAJE = {"HOLA": "👋 Una persona sorda solicita atención",
+           "BIEN": "Calificación del servicio: BIEN 👍",
+           "MAL": "Calificación del servicio: MAL 👎"}
+ENTRADA_CAMARA = "🎥 Grabar con la cámara"
+ENTRADA_ARCHIVO = "📁 Cargar un video"
 
 st.set_page_config(page_title="Reconocimiento LSC · Universidad de La Salle",
                    page_icon=":material/sign_language:", layout="wide")
@@ -94,8 +102,11 @@ def consultar_azure(png):
 
 # ---------- Procesamiento (con caché: el mismo video nunca se consulta dos veces en Azure) ----------
 @st.cache_data(show_spinner=False, max_entries=200)
-def procesar(contenido: bytes, nombre: str):
-    """Archivo -> puntos -> imagen de trayectoria -> predicción de Azure."""
+def procesar(contenido: bytes, nombre: str, duracion_s: float | None = None):
+    """Archivo -> puntos -> imagen de trayectoria -> predicción de Azure.
+
+    duracion_s: duración real medida por el grabador de cámara (None para los videos cargados).
+    """
     ext = os.path.splitext(nombre)[1].lower()
     if ext == ".npz":
         datos = desde_npz(io.BytesIO(contenido))
@@ -106,7 +117,7 @@ def procesar(contenido: bytes, nombre: str):
             tmp.write(contenido)
             ruta = tmp.name
         try:
-            datos = extraer_de_video(ruta)
+            datos = extraer_de_video(ruta, duracion_s=duracion_s)
         finally:
             os.remove(ruta)
     png = dibujar_trayectoria(datos["pose"], datos["mano_izq"], datos["mano_der"], datos["ancho"], datos["alto"])
@@ -157,6 +168,81 @@ def bloque_metricas(reales, predichas, probs, titulo_cm, prefijo):
                 ui.estado_vacio("Curvas ROC", "Aparecen cuando haya videos de al menos dos señas distintas.")
 
 
+# ---------- Análisis de UN video: el mismo flujo para la cámara y para el archivo cargado ----------
+def analizar_video(pasos, contenido: bytes, nombre: str, duracion_s=None):
+    """MediaPipe -> trayectoria -> Azure (con caché) -> tarjeta de resultado -> confirmación a ciegas."""
+    if not (URL and CLAVE):
+        st.error("La app no está conectada a Azure. Revisa la configuración de los *secrets*.")
+        st.stop()
+    huella = hashlib.sha1(contenido).hexdigest()[:16]
+    ui.indicador_pasos(pasos, 1)
+
+    # Una sola llamada a procesar() (con caché). El panel de estado solo describe lo que ocurre dentro.
+    if huella not in st.session_state["analizados"]:
+        with st.status("Analizando la seña...", expanded=True) as estado:
+            etapas = st.empty()
+            etapas.markdown(
+                ":material/progress_activity: Detectando cuerpo y manos con **MediaPipe Holistic**  \n"
+                ":material/progress_activity: Dibujando la **imagen de trayectoria** (224×224)  \n"
+                ":material/progress_activity: Consultando el **modelo en Azure Custom Vision**")
+            inicio = time.perf_counter()
+            try:
+                png, probs, frames = procesar(contenido, nombre, duracion_s)
+            except Exception as e:
+                estado.update(label="No se pudo procesar el video", state="error", expanded=True)
+                st.error(f"No se pudo procesar el video: {e}")
+                st.stop()
+            duracion = time.perf_counter() - inicio
+            etapas.markdown(
+                f":material/check_circle: Puntos clave detectados · **{frames} fotogramas**  \n"
+                ":material/check_circle: Imagen de trayectoria generada  \n"
+                ":material/check_circle: Predicción recibida del modelo en la nube")
+            estado.update(label=f"Seña analizada en {duracion:.1f} s", state="complete", expanded=False)
+        st.session_state["analizados"].add(huella)
+    else:
+        try:
+            png, probs, frames = procesar(contenido, nombre, duracion_s)
+        except Exception as e:
+            st.error(f"No se pudo procesar el video: {e}")
+            st.stop()
+        st.caption(":material/bolt: Resultado recuperado de la caché: este video no se volvió a enviar a Azure.")
+
+    ganadora = next(iter(probs))
+    registro = next((h for h in st.session_state["historial"] if h["huella"] == huella), None)
+    ui.indicador_pasos(pasos, 5 if registro else 4)
+
+    col_video, col_img, col_res = st.columns([1.25, 0.95, 1.35], gap="medium")
+    with col_video:
+        with st.container(key="panel_video", height="stretch"):   # las tres tarjetas, a la misma altura
+            ui.etiqueta("Video")
+            if nombre.lower().endswith(".npz"):
+                ui.estado_vacio("Archivo de puntos clave (.npz)", "No hay video para reproducir.")
+            else:
+                st.video(contenido, format="video/webm" if nombre.lower().endswith(".webm") else "video/mp4")
+    with col_img:
+        with st.container(key="panel_trayectoria", height="stretch"):
+            ui.etiqueta("Imagen de trayectoria")
+            st.image(png, width=224)
+            ui.leyenda_trayectoria(frames)
+    with col_res:
+        ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""), MENSAJE.get(ganadora, ""))
+
+    # ----- Confirmación: la persona indica DESPUÉS cuál seña era realmente -----
+    # El modelo decide primero, sin pistas; la respuesta real se pide después para no influir en nada.
+    ui.seccion("¿Qué seña hiciste realmente?",
+               "El modelo ya decidió sin pistas. Tu respuesta solo se usa para medir su desempeño.")
+    if registro is None:
+        botones = st.columns(len(CLASES), gap="medium")
+        for col, clase in zip(botones, CLASES):
+            if col.button(f"Era {clase}", key=f"real_{clase}_{huella}", width="stretch"):
+                st.session_state["historial"].append({
+                    "huella": huella, "video": nombre, "real": clase, "prediccion": ganadora,
+                    **{f"p_{c}": probs.get(c, 0.0) for c in CLASES}, "frames": frames})
+                st.rerun()
+    else:
+        ui.veredicto(registro["real"], registro["prediccion"])
+
+
 # ---------- Barra lateral ----------
 hist_lateral = st.session_state["historial"]
 with st.sidebar:
@@ -186,85 +272,30 @@ with tab1:
     pasos = st.empty()
     ui.indicador_pasos(pasos, 0)
 
-    c_info, c_subir = st.columns([1, 1.15], gap="large")
-    with c_info:
-        ui.tarjeta_instrucciones()
-    with c_subir:
-        archivo = st.file_uploader("Sube el video de la seña", type=["mp4", "mov", "avi", "npz"],
-                                   help="El modelo reconoce la seña sin saber cuál es; después tú confirmas.")
+    # ----- Entrada del video: dos caminos que entregan los bytes al MISMO flujo (analizar_video) -----
+    modo = st.segmented_control("Forma de entregar el video", [ENTRADA_CAMARA, ENTRADA_ARCHIVO],
+                                default=ENTRADA_CAMARA, required=True, key="modo_entrada",
+                                label_visibility="collapsed")
+    entrada = None                      # (contenido, nombre, duración real en segundos o None)
+    c_info, c_entrada = st.columns([1, 1.15], gap="large")
+    if modo == ENTRADA_ARCHIVO:
+        with c_info:
+            ui.tarjeta_instrucciones()
+        with c_entrada:
+            archivo = st.file_uploader("Sube el video de la seña", type=["mp4", "mov", "avi", "npz"],
+                                       help="El modelo reconoce la seña sin saber cuál es; después tú confirmas.")
+        if archivo is not None:
+            entrada = (archivo.getvalue(), archivo.name, None)
+    else:
+        with c_info:
+            ui.tarjeta_instrucciones(camara=True)
+        with c_entrada:
+            grabacion = grabar_con_camara()
+        if grabacion is not None:
+            entrada = (grabacion["contenido"], grabacion["nombre"], grabacion["duracion_s"])
 
-    if archivo is not None:
-        if not (URL and CLAVE):
-            st.error("La app no está conectada a Azure. Revisa la configuración de los *secrets*.")
-            st.stop()
-        contenido = archivo.getvalue()
-        huella = hashlib.sha1(contenido).hexdigest()[:16]
-        ui.indicador_pasos(pasos, 1)
-
-        # Una sola llamada a procesar() (con caché). El panel de estado solo describe lo que ocurre dentro.
-        if huella not in st.session_state["analizados"]:
-            with st.status("Analizando la seña...", expanded=True) as estado:
-                etapas = st.empty()
-                etapas.markdown(
-                    ":material/progress_activity: Detectando cuerpo y manos con **MediaPipe Holistic**  \n"
-                    ":material/progress_activity: Dibujando la **imagen de trayectoria** (224×224)  \n"
-                    ":material/progress_activity: Consultando el **modelo en Azure Custom Vision**")
-                inicio = time.perf_counter()
-                try:
-                    png, probs, frames = procesar(contenido, archivo.name)
-                except Exception as e:
-                    estado.update(label="No se pudo procesar el video", state="error", expanded=True)
-                    st.error(f"No se pudo procesar el video: {e}")
-                    st.stop()
-                duracion = time.perf_counter() - inicio
-                etapas.markdown(
-                    f":material/check_circle: Puntos clave detectados · **{frames} fotogramas**  \n"
-                    ":material/check_circle: Imagen de trayectoria generada  \n"
-                    ":material/check_circle: Predicción recibida del modelo en la nube")
-                estado.update(label=f"Seña analizada en {duracion:.1f} s", state="complete", expanded=False)
-            st.session_state["analizados"].add(huella)
-        else:
-            try:
-                png, probs, frames = procesar(contenido, archivo.name)
-            except Exception as e:
-                st.error(f"No se pudo procesar el video: {e}")
-                st.stop()
-            st.caption(":material/bolt: Resultado recuperado de la caché: este video no se volvió a enviar a Azure.")
-
-        ganadora = next(iter(probs))
-        registro = next((h for h in st.session_state["historial"] if h["huella"] == huella), None)
-        ui.indicador_pasos(pasos, 5 if registro else 4)
-
-        col_video, col_img, col_res = st.columns([1.25, 0.95, 1.35], gap="medium")
-        with col_video:
-            with st.container(key="panel_video", height="stretch"):   # las tres tarjetas, a la misma altura
-                ui.etiqueta("Video")
-                if archivo.name.lower().endswith(".npz"):
-                    ui.estado_vacio("Archivo de puntos clave (.npz)", "No hay video para reproducir.")
-                else:
-                    st.video(contenido)
-        with col_img:
-            with st.container(key="panel_trayectoria", height="stretch"):
-                ui.etiqueta("Imagen de trayectoria")
-                st.image(png, width=224)
-                ui.leyenda_trayectoria(frames)
-        with col_res:
-            ui.tarjeta_resultado(ganadora, probs, CLASES, DESCRIPCION.get(ganadora, ""))
-
-        # ----- Confirmación: la persona indica DESPUÉS cuál seña era realmente -----
-        # El modelo decide primero, sin pistas; la respuesta real se pide después para no influir en nada.
-        ui.seccion("¿Qué seña hiciste realmente?",
-                   "El modelo ya decidió sin pistas. Tu respuesta solo se usa para medir su desempeño.")
-        if registro is None:
-            botones = st.columns(len(CLASES), gap="medium")
-            for col, clase in zip(botones, CLASES):
-                if col.button(f"Era {clase}", key=f"real_{clase}_{huella}", width="stretch"):
-                    st.session_state["historial"].append({
-                        "huella": huella, "video": archivo.name, "real": clase, "prediccion": ganadora,
-                        **{f"p_{c}": probs.get(c, 0.0) for c in CLASES}, "frames": frames})
-                    st.rerun()
-        else:
-            ui.veredicto(registro["real"], registro["prediccion"])
+    if entrada is not None:
+        analizar_video(pasos, *entrada)
 
     # ----- Métricas de la sesión: se actualizan con cada video -----
     hist = pd.DataFrame(st.session_state["historial"])
@@ -283,9 +314,9 @@ with tab1:
                                            for c in CLASES}})
             st.download_button("Descargar historial (CSV)", vista.to_csv(index=False).encode("utf-8"),
                                "historial_sesion.csv", "text/csv", icon=":material/download:")
-    elif archivo is None:
+    elif entrada is None:
         ui.estado_vacio("Aún no hay videos en esta sesión",
-                        "Sube un video para ver la predicción y empezar a medir el desempeño del modelo.")
+                        "Graba o carga un video para ver la predicción y empezar a medir el desempeño del modelo.")
 
 # ---------- Pestaña 2: explicación ----------
 with tab2:
@@ -294,7 +325,8 @@ with tab2:
     st.html("""
 <div class="lsc-flujo">
   <div class="lsc-etapa"><div class="lsc-num">1</div><h5>Video</h5>
-    <p>Una persona hace <b>una</b> seña frente a la cámara durante 2 a 4 segundos.</p></div>
+    <p>Una persona hace <b>una</b> seña frente a la cámara durante 2 a 4 segundos. El video puede
+       <b>grabarse con la cámara</b> del dispositivo o <b>cargarse</b> desde él.</p></div>
   <div class="lsc-etapa"><div class="lsc-num">2</div><h5>Puntos clave</h5>
     <p><i>MediaPipe Holistic</i> detecta en cada fotograma 33 puntos del cuerpo y 21 de cada mano.</p></div>
   <div class="lsc-etapa"><div class="lsc-num">3</div><h5>Imagen de trayectoria</h5>

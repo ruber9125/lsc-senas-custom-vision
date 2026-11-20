@@ -43,6 +43,10 @@ CSS = f"""
 .stTabs [data-baseweb="tab"] {{ padding: .55rem .9rem; font-weight: 600; }}
 .stTabs [data-baseweb="tab-highlight"] {{ background-color: var(--dorado); height: 3px; }}
 
+/* ---------- Selector de entrada (cámara / archivo) ---------- */
+div[class*="st-key-modo_entrada"] {{ margin: .2rem 0 .6rem; }}
+div[class*="st-key-modo_entrada"] button {{ min-height: 2.7rem; padding: .35rem 1.1rem; font-weight: 600; }}
+
 /* ---------- Títulos de sección ---------- */
 .lsc-seccion {{
   display: flex; align-items: center; gap: .6rem; margin: 1.4rem 0 .6rem;
@@ -102,6 +106,7 @@ div[class*="st-key-tarjeta_resultado"] {{
   letter-spacing: .06em; text-transform: uppercase; background: rgba(247, 171, 0, .18); color: #7A5300;
 }}
 .lsc-sena {{ font-size: 3.6rem; font-weight: 800; line-height: 1.05; letter-spacing: .04em; margin: .35rem 0 .2rem; }}
+.lsc-atencion {{ font-size: 1.05rem; font-weight: 700; color: var(--azul); margin: .1rem 0 .45rem; }}
 .lsc-confianza {{ font-size: 1.05rem; color: var(--texto); }}
 .lsc-confianza b {{ color: var(--azul); }}
 .lsc-nivel {{ display: inline-block; margin-left: .4rem; padding: .05rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 700; }}
