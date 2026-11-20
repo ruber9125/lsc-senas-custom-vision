@@ -84,7 +84,7 @@
     enviar("streamlit:setComponentValue", { value: valor, dataType: "json" });
   }
 
-  var SEGUNDOS = 4;            // duración de la grabación (Python puede cambiarla con el argumento "segundos")
+  var SEGUNDOS = 3;            // duración de la grabación (Python puede cambiarla con el argumento "segundos")
   var CUENTA = 3;              // cuenta regresiva
   window.addEventListener("message", function (ev) {
     var d = ev.data || {};

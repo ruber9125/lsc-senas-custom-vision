@@ -13,8 +13,8 @@ import streamlit.components.v1 as components
 _RUTA = Path(__file__).resolve().parent.parent / "componentes_web" / "grabador"
 _componente = components.declare_component("grabador", path=str(_RUTA))
 
-SEGUNDOS = 4                      # duración de cada grabación
-MAX_BYTES = 40 * 1024 * 1024      # límite de seguridad: 4 s de video pesan 1-3 MB
+SEGUNDOS = 3                      # duración de cada grabación
+MAX_BYTES = 40 * 1024 * 1024      # límite de seguridad: 3 s de video pesan 1-2 MB
 
 
 def grabar_con_camara():

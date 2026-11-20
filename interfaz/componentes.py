@@ -69,7 +69,7 @@ def tarjeta_instrucciones(camara: bool = False):
   <h4>Cómo grabar con la cámara</h4>
   <ul>
     <li>Pulsa <b>Activar cámara</b> y permite el acceso en el navegador.</li>
-    <li>Pulsa <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>4 segundos</b>.</li>
+    <li>Pulsa <b>Grabar seña</b>: hay una cuenta regresiva <b>3-2-1</b> y luego se graban <b>3 segundos</b>.</li>
     <li>Haz <b>una sola seña</b>, de frente, de la cintura hacia arriba y con buena luz.</li>
     <li>Empieza y termina con las manos abajo. Puedes repetir la grabación.</li>
   </ul>
